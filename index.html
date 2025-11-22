@@ -3,812 +3,830 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>iSchool 校园资料管理系统 (权限整合版)</title>
+    <title>iSchool 云端总控系统 (维护功能版)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f3f4f6;
-        }
-        .glass-panel {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
-        }
-        /* 模态框背景 */
-        .modal-backdrop {
-            background-color: rgba(0, 0, 0, 0.5);
-        }
-        /* 加载动画 */
-        .loader {
-            border: 3px solid #f3f3f3;
-            border-radius: 50%;
-            border-top: 3px solid #3498db;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .dashboard-card {
-            transition: all 0.3s ease;
-        }
-        .dashboard-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-        }
+        /* --- 核心样式 --- */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; }
+        .glass-panel { background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); }
+        .modal-backdrop { background-color: rgba(0, 0, 0, 0.5); animation: fadeIn 0.2s ease-out; }
+        .dashboard-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .dashboard-card:hover { transform: translateY(-5px); box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.1); }
+        .class-btn.active { background-color: #2563eb; color: white; border-left: 4px solid #1e40af; }
+        .school-input-group:focus-within i { color: #2563eb; }
+        
+        /* 动画 */
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        
+        /* 维护模式横幅 */
+        #maintenance-banner { background: linear-gradient(45deg, #ef4444, #b91c1c); }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col text-gray-700">
 
-    <!-- 顶部导航栏 -->
-    <nav id="navbar" class="bg-slate-800 text-white p-4 hidden shadow-lg">
+    <!-- 维护模式全屏拦截 (默认隐藏) -->
+    <div id="maintenance-overlay" class="fixed inset-0 z-[90] bg-gray-900/90 flex flex-col items-center justify-center text-white hidden text-center p-6">
+        <div class="bg-white/10 p-8 rounded-2xl backdrop-blur-md max-w-lg w-full border border-white/20 shadow-2xl">
+            <i class="fas fa-tools text-6xl mb-6 text-yellow-400 animate-bounce"></i>
+            <h2 class="text-3xl font-bold mb-2">系统维护中</h2>
+            <p class="text-xl text-blue-200 font-mono mb-6" id="maintenance-msg-overlay">System Maintenance</p>
+            <div class="bg-black/30 rounded-lg p-4 text-sm text-gray-300 text-left space-y-2">
+                <p><i class="far fa-clock mr-2"></i>维护开始: <span id="maint-start-time" class="text-white font-bold"></span></p>
+                <p><i class="far fa-check-circle mr-2"></i>预计结束: <span id="maint-end-time" class="text-white font-bold"></span></p>
+            </div>
+            <button onclick="location.reload()" class="mt-8 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-full transition font-bold">
+                <i class="fas fa-sync-alt mr-2"></i> 刷新页面
+            </button>
+            <div class="mt-4">
+                <button onclick="APP.ui.toggleMaintenanceLogin()" class="text-xs text-gray-500 hover:text-white underline">管理员通道</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= 导航栏 ================= -->
+    <nav id="navbar" class="bg-slate-800 text-white p-4 hidden shadow-lg z-40 transition-colors duration-300">
         <div class="container mx-auto flex justify-between items-center">
-            <div class="flex items-center gap-3 cursor-pointer" onclick="navigateTo('dashboard')">
-                <i class="fas fa-school text-2xl text-blue-400"></i>
-                <h1 class="text-xl font-bold">iSchool 云端系统</h1>
+            <div class="flex items-center gap-3 cursor-pointer select-none" onclick="APP.router.navigate('dashboard')">
+                <div class="bg-white/10 p-2 rounded-lg"><i class="fas fa-school text-2xl text-blue-400" id="app-logo"></i></div>
+                <div>
+                    <h1 class="text-xl font-bold leading-tight tracking-tight">iSchool</h1>
+                    <p id="nav-school-name" class="text-xs text-gray-400 font-medium">云端系统</p>
+                </div>
             </div>
             <div class="flex items-center gap-4">
-                <span id="auto-logout-timer" class="text-xs text-gray-500 bg-gray-900 px-2 py-1 rounded hidden md:inline-block" title="闲置自动登出倒计时">
-                    <i class="fas fa-hourglass-half mr-1"></i>监控中
-                </span>
-                <!-- 查看我的权限按钮 -->
-                <button onclick="showMyPermissions()" class="flex items-center gap-2 hover:bg-slate-700 px-3 py-1 rounded transition text-sm" title="查看我的权限">
-                    <i class="fas fa-id-badge text-yellow-400"></i>
-                    <span id="nav-user-id" class="font-bold">User</span>
+                <button id="btn-god-mode-exit" onclick="APP.auth.exitGodMode()" class="hidden bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg flex items-center gap-2 animate-pulse">
+                    <i class="fas fa-power-off"></i> 退出上帝视角
                 </button>
-                <div class="h-6 w-px bg-slate-600"></div>
-                <button id="btn-logout" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded transition text-sm">
-                    <i class="fas fa-sign-out-alt mr-1"></i> 登出
+                
+                <div class="hidden md:flex items-center bg-slate-700/50 rounded-full px-3 py-1">
+                    <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse mr-2"></div>
+                    <span class="text-xs text-gray-300">实时连接</span>
+                </div>
+
+                <button onclick="APP.ui.showMyPermissions()" class="flex items-center gap-2 hover:bg-white/10 px-3 py-1.5 rounded-lg transition group">
+                    <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-xs font-bold group-hover:bg-blue-400">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <div class="text-left hidden sm:block">
+                        <span id="nav-user-id" class="block text-sm font-bold leading-none">User</span>
+                        <span class="text-[10px] text-gray-400">个人中心</span>
+                    </div>
                 </button>
+                
+                <button onclick="APP.auth.logout()" class="text-gray-400 hover:text-white transition"><i class="fas fa-sign-out-alt text-lg"></i></button>
             </div>
         </div>
     </nav>
 
-    <!-- 主要内容区域 -->
+    <!-- ================= 主视图区域 ================= -->
     <main class="flex-grow flex flex-col items-center justify-center p-4 relative w-full max-w-7xl mx-auto">
         
-        <!-- 全局加载状态 -->
-        <div id="global-loading" class="absolute inset-0 bg-gray-100 z-50 flex flex-col items-center justify-center">
-            <div class="text-4xl text-blue-600 mb-4"><i class="fas fa-circle-notch fa-spin"></i></div>
-            <p class="text-gray-500" id="loading-text">正在连接 Firebase 云端数据库...</p>
-            <p class="text-xs text-gray-400 mt-2">(如果长时间卡住，请检查网络或刷新页面)</p>
+        <!-- Loading 遮罩 -->
+        <div id="global-loading" class="absolute inset-0 bg-gray-100 z-[60] flex flex-col items-center justify-center">
+            <div class="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+            <p class="text-gray-500 font-medium animate-pulse">正在安全连接云端数据库...</p>
         </div>
 
-        <!-- 1. 登录界面 -->
-        <div id="login-view" class="w-full max-w-md hidden">
-            <div class="glass-panel rounded-2xl p-8">
-                <div class="text-center mb-8">
-                    <div class="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i class="fas fa-cloud text-blue-600 text-2xl"></i>
-                    </div>
-                    <h2 class="text-2xl font-bold text-gray-800">iSchool 登录</h2>
-                    <p class="text-gray-500 text-sm mt-1">云端数据实时同步</p>
-                    <div id="connection-status" class="mt-2 text-xs text-orange-500">
-                        <i class="fas fa-circle-notch fa-spin mr-1"></i> 正在同步用户数据...
+        <!-- 1. 登录视图 -->
+        <div id="view-login" class="w-full max-w-md hidden animate-fade-in">
+            <!-- 维护提示横幅 -->
+            <div id="login-maintenance-alert" class="hidden mb-4 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded shadow-sm">
+                <div class="flex">
+                    <div class="flex-shrink-0"><i class="fas fa-exclamation-triangle text-yellow-400"></i></div>
+                    <div class="ml-3">
+                        <p class="text-sm text-yellow-700 font-bold">即将进行系统维护</p>
+                        <p class="text-xs text-yellow-600 mt-1" id="login-maintenance-msg">请注意保存资料</p>
                     </div>
                 </div>
+            </div>
+
+            <div class="glass-panel rounded-2xl p-8 relative overflow-hidden shadow-2xl">
+                <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
+                <div class="text-center mb-8 mt-2">
+                    <h2 class="text-3xl font-extrabold text-gray-800 tracking-tight">iSchool</h2>
+                    <p class="text-gray-500 text-sm mt-1">多校区数字化管理平台</p>
+                </div>
                 
-                <form id="form-login" class="space-y-4">
+                <form id="form-login" class="space-y-5">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">用户 ID</label>
-                        <div class="relative">
-                            <span class="absolute left-3 top-3 text-gray-400"><i class="fas fa-user"></i></span>
-                            <input type="text" id="login-id" required 
-                                class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
-                                placeholder="例如: admin">
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">学校编号 / School Code</label>
+                        <div class="school-input-group relative">
+                            <span class="absolute left-3 top-3 text-gray-400"><i class="fas fa-building"></i></span>
+                            <input type="text" id="login-school-code" required class="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition font-mono uppercase" placeholder="ABC0001" oninput="APP.auth.checkSchoolCode(this.value)">
+                        </div>
+                        <div id="school-name-display" class="h-5 mt-1 text-xs font-bold transition-all duration-300 opacity-0 transform -translate-y-1"></div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">教职员 ID</label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-3 text-gray-400"><i class="fas fa-id-card"></i></span>
+                                <input type="text" id="login-id" required class="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition" placeholder="admin">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">密码</label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-3 text-gray-400"><i class="fas fa-lock"></i></span>
+                                <input type="password" id="login-pwd" required class="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition" placeholder="••••••">
+                            </div>
                         </div>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">密码</label>
-                        <div class="relative">
-                            <span class="absolute left-3 top-3 text-gray-400"><i class="fas fa-lock"></i></span>
-                            <input type="password" id="login-pwd" required 
-                                class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
-                                placeholder="••••••">
-                        </div>
+
+                    <div id="login-error" class="text-red-500 text-sm text-center hidden bg-red-50 p-2 rounded border border-red-100 flex items-center justify-center gap-2">
+                        <i class="fas fa-exclamation-circle"></i> <span>错误信息</span>
                     </div>
-                    <div id="login-error" class="text-red-500 text-sm text-center hidden bg-red-50 p-2 rounded">
-                        <i class="fas fa-exclamation-circle mr-1"></i> <span id="login-error-msg">ID 或密码错误</span>
-                    </div>
-                    <button type="submit" id="btn-login-submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition shadow-md flex justify-center items-center gap-2">
-                        <span>进入系统</span>
+                    
+                    <button type="submit" id="btn-login-submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-lg transition shadow-lg transform active:scale-95 flex justify-center items-center gap-2">
+                        <span>进入系统</span> <i class="fas fa-arrow-right"></i>
                     </button>
                 </form>
             </div>
+            <p class="text-center text-xs text-gray-400 mt-6">&copy; 2025 iSchool Systems. All rights reserved.</p>
         </div>
 
-        <!-- 2. 系统管理界面 (原 Admin 界面，现在支持返回 Dashboard) -->
-        <div id="admin-view" class="w-full hidden h-full flex-col">
-            <!-- 顶部返回栏 -->
-            <div class="flex items-center justify-between mb-6">
-                <button onclick="navigateTo('dashboard')" class="flex items-center text-gray-600 hover:text-blue-600 transition font-medium">
-                    <i class="fas fa-arrow-left mr-2"></i> 返回工作台
-                </button>
-                <h2 class="text-2xl font-bold text-gray-800">系统后台管理</h2>
-                <div class="w-20"></div>
+        <!-- 2. 系统总控台 (System Admin) -->
+        <div id="view-system-console" class="w-full hidden h-full flex-col animate-fade-in">
+            <div class="mb-8 text-center">
+                <span class="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full">SUPER ADMIN</span>
+                <h2 class="text-3xl font-bold text-gray-800 mt-2">系统总控中心</h2>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-                <!-- 左侧：用户管理 -->
-                <div class="lg:col-span-2 space-y-6">
-                    <!-- 添加用户卡片 (根据权限显示/隐藏) -->
-                    <div class="glass-panel rounded-xl p-6" id="admin-add-user-panel">
-                        <h3 class="text-lg font-bold text-gray-800 mb-4 border-b pb-2">
-                            <i class="fas fa-user-plus text-green-600 mr-2"></i>创建新账号
-                        </h3>
-                        <form id="form-add-user" class="flex flex-col md:flex-row gap-4 items-end">
-                            <div class="flex-1 w-full">
-                                <label class="text-xs text-gray-500">新用户 ID</label>
-                                <input type="text" id="new-user-id" required class="w-full mt-1 px-3 py-2 border rounded outline-none focus:border-blue-500">
-                            </div>
-                            <div class="flex-1 w-full">
-                                <label class="text-xs text-gray-500">设置密码</label>
-                                <input type="text" id="new-user-pwd" required class="w-full mt-1 px-3 py-2 border rounded outline-none focus:border-blue-500">
-                            </div>
-                            <div class="w-full md:w-auto">
-                                <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded transition">
-                                    快速添加
-                                </button>
-                            </div>
+                
+                <!-- 左侧栏：注册 + 维护设置 -->
+                <div class="space-y-6">
+                    <!-- 注册新学校 -->
+                    <div class="glass-panel rounded-xl p-6">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-plus-circle text-blue-600"></i> 注册新学校</h3>
+                        <form id="form-create-school" class="space-y-4">
+                            <div><label class="text-xs font-bold text-gray-500">学校全称</label><input type="text" id="sys-school-name" required class="w-full p-2 border rounded mt-1"></div>
+                            <div><label class="text-xs font-bold text-gray-500">分配编号 (3字4数)</label><input type="text" id="sys-school-code" required pattern="[A-Za-z]{3}[0-9]{4}" maxlength="7" class="w-full p-2 border rounded mt-1 uppercase font-mono bg-gray-50"></div>
+                            <div><label class="text-xs font-bold text-gray-500">初始 Admin 密码</label><input type="text" id="sys-admin-pwd" required class="w-full p-2 border rounded mt-1 font-mono" value="123456"></div>
+                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-bold shadow transition">立即创建</button>
                         </form>
-                        <p class="text-xs text-gray-400 mt-2">* 新用户默认拥有“学生资料管理”权限。</p>
                     </div>
 
-                    <!-- 用户列表卡片 -->
-                    <div class="glass-panel rounded-xl p-6 overflow-hidden">
-                        <h3 class="text-lg font-bold text-gray-800 mb-4 flex justify-between items-center">
-                            <span><i class="fas fa-users-cog text-blue-600 mr-2"></i>账号权限管理</span>
-                            <span class="text-xs font-normal text-gray-400 bg-gray-100 px-2 py-1 rounded">实时同步 <i class="fas fa-wifi text-green-500 ml-1"></i></span>
-                        </h3>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-sm text-left text-gray-500">
-                                <thead class="text-xs text-gray-700 uppercase bg-gray-100">
-                                    <tr>
-                                        <th scope="col" class="px-6 py-3">用户 ID</th>
-                                        <th scope="col" class="px-6 py-3">权限概览</th>
-                                        <th scope="col" class="px-6 py-3">密码</th>
-                                        <th scope="col" class="px-6 py-3 text-right">操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="user-list-body">
-                                    <tr><td colspan="4" class="text-center py-4">正在加载数据...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
+                    <!-- 系统维护设置 -->
+                    <div class="glass-panel rounded-xl p-6 border-l-4 border-yellow-400">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-tools text-yellow-500"></i> 维护模式设置</h3>
+                        <form id="form-maintenance" class="space-y-3">
+                            <div><label class="text-xs font-bold text-gray-500">公告内容</label><input type="text" id="maint-msg" class="w-full p-2 border rounded mt-1" value="系统正在进行重要安全更新，请稍后访问。"></div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div><label class="text-xs font-bold text-gray-500">开始时间</label><input type="datetime-local" id="maint-start" class="w-full p-1 border rounded text-xs"></div>
+                                <div><label class="text-xs font-bold text-gray-500">结束时间</label><input type="datetime-local" id="maint-end" class="w-full p-1 border rounded text-xs"></div>
+                            </div>
+                            <div class="flex items-center justify-between pt-2">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="maint-active" class="sr-only peer">
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                                    <span class="ml-3 text-sm font-medium text-gray-700">启用拦截</span>
+                                </label>
+                                <button type="submit" class="bg-gray-800 text-white px-3 py-1 rounded text-xs">保存设置</button>
+                            </div>
+                            <p class="text-[10px] text-gray-400 mt-1">* 启用后，除 System Admin 外的所有用户将被强制登出并禁止登入。</p>
+                        </form>
                     </div>
                 </div>
 
-                <!-- 右侧：系统日志 -->
-                <div class="glass-panel rounded-xl p-6 lg:h-[calc(100vh-8rem)] overflow-hidden flex flex-col">
-                    <div class="flex justify-between items-center mb-4 pb-2 border-b">
-                        <h3 class="text-lg font-bold text-gray-800">
-                            <i class="fas fa-history text-purple-600 mr-2"></i>系统日志
-                        </h3>
-                        <button id="btn-clear-logs" class="text-xs text-red-500 hover:text-red-700 underline">清空日志</button>
+                <!-- 右侧：学校列表 -->
+                <div class="lg:col-span-2 glass-panel rounded-xl p-0 overflow-hidden flex flex-col h-[600px]">
+                    <div class="p-4 border-b bg-gray-50/50 flex justify-between items-center">
+                        <h3 class="font-bold text-gray-700"><i class="fas fa-list-ul mr-2"></i>已注册学校</h3>
+                        <span class="text-xs text-gray-400">实时监控中</span>
                     </div>
-                    <div class="flex-1 overflow-y-auto pr-2" id="log-container">
-                        <div class="text-center text-gray-400 mt-10">加载中...</div>
+                    <div class="flex-1 overflow-auto p-4">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-100/50"><tr><th class="px-4 py-2">编号</th><th class="px-4 py-2">名称</th><th class="px-4 py-2 text-right">操作</th></tr></thead>
+                            <tbody id="system-school-list"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- 3. 综合工作台 Dashboard (原 Teacher View，现在所有人都先到这里) -->
-        <div id="dashboard-view" class="w-full hidden">
+        <!-- 3. 仪表盘 (工作台) -->
+        <div id="view-dashboard" class="w-full hidden animate-fade-in">
             <div class="text-center mb-10">
-                <h2 class="text-3xl font-bold text-gray-800">工作台</h2>
-                <p class="text-gray-500 mt-2">请选择您要进行的操作</p>
+                <h2 class="text-4xl font-bold text-gray-800 tracking-tight">工作台</h2>
+                <p class="text-gray-500 mt-2 text-lg" id="dashboard-school-name">正在加载...</p>
             </div>
-
-            <!-- 功能菜单卡片区 - JS 动态生成 -->
             <div id="dashboard-card-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                <!-- JS 将在此处注入卡片 -->
+                <!-- 卡片由 JS 动态生成 -->
             </div>
         </div>
 
-        <!-- 4. 学生资料页面 -->
-        <div id="student-data-view" class="w-full hidden h-full flex-col">
+        <!-- 4. 账号管理 (School Admin) -->
+        <div id="view-admin" class="w-full hidden h-full flex-col animate-fade-in">
             <div class="flex items-center justify-between mb-6">
-                <button onclick="navigateTo('dashboard')" class="flex items-center text-gray-600 hover:text-blue-600 transition font-medium">
-                    <i class="fas fa-arrow-left mr-2"></i> 返回工作台
-                </button>
-                <h2 class="text-2xl font-bold text-gray-800">学生资料管理</h2>
-                <div class="w-20"></div>
+                <button onclick="APP.router.navigate('dashboard')" class="flex items-center text-gray-500 hover:text-blue-600 font-bold transition"><i class="fas fa-arrow-left mr-2"></i> 返回工作台</button>
+                <h2 class="text-2xl font-bold text-gray-800">本校后台管理</h2><div class="w-24"></div>
             </div>
-            <div class="glass-panel rounded-xl p-8 flex-grow flex flex-col items-center justify-center text-center border-dashed border-2 border-gray-300 bg-white/50">
-                <div class="mb-4">
-                    <i class="fas fa-clipboard-list text-5xl text-gray-300"></i>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="glass-panel rounded-xl p-6" id="admin-add-user-panel">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4 border-b pb-2">创建账号</h3>
+                        <form id="form-add-user" class="flex gap-4 items-end"><input type="text" id="new-user-id" placeholder="ID" required class="flex-1 p-2 border rounded"><input type="text" id="new-user-pwd" placeholder="密码" required class="flex-1 p-2 border rounded"><button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded font-medium shadow">添加</button></form>
+                    </div>
+                    <div class="glass-panel rounded-xl p-0 overflow-hidden">
+                        <div class="p-4 border-b bg-gray-50"><h3 class="font-bold text-gray-700">账号列表</h3></div>
+                        <div class="overflow-x-auto"><table class="w-full text-sm text-left text-gray-600"><thead class="bg-gray-100 text-xs uppercase"><tr><th class="px-6 py-3">ID</th><th class="px-6 py-3">权限</th><th class="px-6 py-3">密码</th><th class="px-6 py-3 text-right">操作</th></tr></thead><tbody id="user-list-body"></tbody></table></div>
+                    </div>
                 </div>
-                <h3 class="text-xl font-medium text-gray-600">学生资料功能区</h3>
-                <p class="text-gray-400 mt-2">这里是功能占位符</p>
+                <div class="glass-panel rounded-xl p-0 flex flex-col h-[600px]">
+                    <div class="p-4 border-b bg-gray-50 flex justify-between items-center"><h3 class="font-bold text-gray-700">系统日志</h3><button onclick="APP.data.clearLogs()" class="text-xs text-red-500 hover:underline">清空</button></div>
+                    <div class="flex-1 overflow-y-auto p-4 space-y-3" id="log-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. 学生资料管理 -->
+        <div id="view-student-data" class="w-full hidden h-full flex-col animate-fade-in">
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex items-center gap-4"><button onclick="APP.router.navigate('dashboard')" class="text-gray-500 hover:text-blue-600 font-bold"><i class="fas fa-arrow-left mr-2"></i> 工作台</button><h2 class="text-2xl font-bold text-gray-800">学生资料库</h2></div>
+                <button id="btn-manage-classes" onclick="APP.ui.openClassModal()" class="hidden bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg shadow font-medium text-sm"><i class="fas fa-layer-group mr-2"></i> 管理班级</button>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 h-full min-h-[600px]">
+                <div class="glass-panel rounded-xl p-0 flex flex-col h-full overflow-hidden">
+                    <div class="p-4 bg-gray-50 border-b"><h3 class="font-bold text-gray-700">班级列表</h3></div>
+                    <div id="class-list-container" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+                </div>
+                <div class="lg:col-span-3 glass-panel rounded-xl p-0 flex flex-col h-full overflow-hidden">
+                    <div class="p-6 border-b flex justify-between items-center bg-white">
+                        <div><h3 id="current-class-title" class="text-xl font-bold text-blue-800">请选择班级</h3><p id="current-class-info" class="text-sm text-gray-400 mt-1">点击左侧列表查看详情</p></div>
+                        <button id="btn-add-student" onclick="APP.ui.openStudentModal()" class="hidden bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg shadow font-medium"><i class="fas fa-user-plus mr-2"></i> 添加学生</button>
+                    </div>
+                    <div class="flex-1 overflow-auto bg-gray-50/50">
+                        <table class="w-full text-sm text-left text-gray-600">
+                            <thead class="text-xs text-gray-500 uppercase bg-gray-100 sticky top-0 shadow-sm"><tr><th class="px-6 py-3">姓名</th><th class="px-6 py-3">性别</th><th class="px-6 py-3">身份证号</th><th class="px-6 py-3 text-right">操作</th></tr></thead>
+                            <tbody id="student-list-body" class="divide-y divide-gray-200"><tr><td colspan="4" class="text-center py-20 text-gray-400">请选择左侧班级</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div class="p-2 bg-gray-100 text-right text-xs text-gray-500 border-t">当前显示: <span id="student-count" class="font-bold">0</span> 人</div>
+                </div>
             </div>
         </div>
 
     </main>
 
-    <!-- 模态框及其他组件保持不变，省略 HTML 重复部分... -->
-    <!-- 模态框 1: 查看我的权限 (My Permissions) -->
-    <div id="modal-my-perms" class="fixed inset-0 z-50 hidden flex items-center justify-center modal-backdrop">
-        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden transform transition-all scale-100">
-            <div class="bg-slate-800 text-white p-4 flex justify-between items-center">
-                <h3 class="font-bold"><i class="fas fa-shield-alt mr-2"></i>我的权限列表</h3>
-                <button onclick="closeModal('modal-my-perms')" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
-            </div>
-            <div class="p-6">
-                <div class="flex items-center gap-4 mb-6">
-                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xl font-bold">
-                        <i class="fas fa-user"></i>
-                    </div>
-                    <div>
-                        <p class="text-sm text-gray-500">当前账号</p>
-                        <p class="text-xl font-bold text-gray-800" id="modal-my-id">User</p>
-                    </div>
-                </div>
-                <div class="space-y-3" id="modal-my-perm-list">
-                    <!-- 动态填充权限 -->
-                </div>
-            </div>
-            <div class="bg-gray-50 p-4 text-center text-xs text-gray-400 border-t">
-                权限由管理员分配，如需修改请联系管理员
-            </div>
-        </div>
-    </div>
+    <!-- ================= 模态框 ================= -->
+    <!-- 班级添加 -->
+    <div id="modal-classes" class="fixed inset-0 z-50 hidden flex items-center justify-center modal-backdrop"><div class="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden flex flex-col max-h-[80vh] animate-fade-in"><div class="bg-purple-800 text-white p-4 flex justify-between items-center"><h3 class="font-bold">班级管理</h3><button onclick="APP.ui.closeModal('modal-classes')" class="hover:bg-white/20 rounded p-1"><i class="fas fa-times"></i></button></div><div class="p-6 border-b bg-gray-50"><form id="form-add-class" class="flex gap-2"><input type="text" id="input-class-year" placeholder="年份 (2025)" class="w-24 p-2 border rounded text-center" required><input type="text" id="input-class-name" placeholder="班级名 (1B)" class="flex-1 p-2 border rounded" required><button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white px-4 rounded font-bold">添加</button></form></div><div class="flex-1 overflow-y-auto"><table class="w-full text-sm text-left text-gray-600"><thead class="bg-gray-100 text-xs uppercase"><tr><th class="px-6 py-3">年份</th><th class="px-6 py-3">班级名</th><th class="px-6 py-3 text-right">操作</th></tr></thead><tbody id="manage-class-list-body"></tbody></table></div></div></div>
+    <!-- 学生添加/编辑 -->
+    <div id="modal-student" class="fixed inset-0 z-50 hidden flex items-center justify-center modal-backdrop"><div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-fade-in"><div class="bg-blue-600 text-white p-4 flex justify-between items-center"><h3 id="modal-student-title" class="font-bold">学生资料</h3><button onclick="APP.ui.closeModal('modal-student')" class="hover:bg-white/20 rounded p-1"><i class="fas fa-times"></i></button></div><div class="p-6"><form id="form-student" class="space-y-4"><input type="hidden" id="student-id"><div><label class="text-xs font-bold text-gray-500">所属班级</label><input type="text" id="student-class-display" class="w-full p-2 bg-gray-100 border rounded text-gray-500 mt-1" disabled></div><div><label class="text-xs font-bold text-gray-500">学生姓名</label><input type="text" id="student-name" required class="w-full p-2 border rounded mt-1 focus:ring-2 ring-blue-200 outline-none"></div><div class="flex gap-4"><div class="flex-1"><label class="text-xs font-bold text-gray-500">性别</label><select id="student-gender" class="w-full p-2 border rounded mt-1"><option>男</option><option>女</option></select></div><div class="flex-[2]"><label class="text-xs font-bold text-gray-500">身份证号 (IC)</label><input type="text" id="student-ic" class="w-full p-2 border rounded mt-1 font-mono"></div></div><button class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-bold shadow mt-2">保存资料</button></form></div></div></div>
+    <!-- 权限编辑 -->
+    <div id="modal-edit-perms" class="fixed inset-0 z-50 hidden flex items-center justify-center modal-backdrop"><div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 animate-fade-in"><h3 class="font-bold mb-4 text-lg">修改用户权限</h3><p id="edit-perm-target-id" class="hidden"></p><form id="form-edit-perms" class="space-y-3"><label class="flex items-center p-3 border rounded hover:bg-gray-50 cursor-pointer"><input type="checkbox" name="perms" value="student_data" class="mr-3 w-5 h-5 text-blue-600"> <div><span class="font-bold text-sm block">学生资料管理</span><span class="text-xs text-gray-400">查看及修改学生档案</span></div></label><label class="flex items-center p-3 border rounded hover:bg-gray-50 cursor-pointer"><input type="checkbox" name="perms" value="account_manage" class="mr-3 w-5 h-5 text-purple-600"> <div><span class="font-bold text-sm block">账号管理</span><span class="text-xs text-gray-400">创建及删除老师账号</span></div></label><label class="flex items-center p-3 border rounded hover:bg-gray-50 cursor-pointer"><input type="checkbox" name="perms" value="perm_manage" class="mr-3 w-5 h-5 text-red-600"> <div><span class="font-bold text-sm block">权限分配</span><span class="text-xs text-gray-400">修改他人权限</span></div></label><div class="flex justify-end gap-3 mt-6"><button type="button" onclick="APP.ui.closeModal('modal-edit-perms')" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded font-medium">取消</button><button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium shadow">保存修改</button></div></form></div></div>
+    <!-- 我的权限 -->
+    <div id="modal-my-perms" class="fixed inset-0 z-50 hidden flex items-center justify-center modal-backdrop"><div class="bg-white rounded-xl p-6 w-80 shadow-2xl animate-fade-in"><div class="flex items-center gap-3 mb-4"><div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"><i class="fas fa-shield-alt"></i></div><div><h3 class="font-bold">我的权限</h3><p id="modal-my-id" class="text-xs text-gray-500"></p></div></div><div id="modal-my-perm-list" class="space-y-2"></div><button onclick="APP.ui.closeModal('modal-my-perms')" class="mt-6 w-full bg-gray-100 hover:bg-gray-200 py-2 rounded font-medium transition">关闭</button></div></div>
+    <!-- Debug Console -->
+    <div id="debug-console" class="fixed bottom-0 left-0 w-full bg-slate-900 text-red-400 p-2 text-xs font-mono z-[100] hidden opacity-90"><div class="flex justify-between"><span class="font-bold">SYSTEM ERROR:</span><button onclick="this.parentElement.parentElement.classList.add('hidden')" class="text-white bg-white/20 px-2 rounded hover:bg-white/30">关闭</button></div><pre id="debug-content" class="mt-1 whitespace-pre-wrap"></pre></div>
 
-    <!-- 模态框 2: Admin 管理权限 (Edit Permissions) -->
-    <div id="modal-edit-perms" class="fixed inset-0 z-50 hidden flex items-center justify-center modal-backdrop">
-        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
-            <div class="bg-slate-800 text-white p-4 flex justify-between items-center">
-                <h3 class="font-bold">修改权限配置</h3>
-                <button onclick="closeModal('modal-edit-perms')" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
-            </div>
-            <div class="p-6">
-                <p class="text-sm text-gray-500 mb-4">正在编辑用户: <span id="edit-perm-target-id" class="font-bold text-blue-600"></span></p>
-                
-                <form id="form-edit-perms" class="space-y-4">
-                    <input type="hidden" id="edit-perm-target-id-hidden">
-                    
-                    <!-- 权限选项 -->
-                    <label class="flex items-center p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition">
-                        <input type="checkbox" name="perms" value="student_data" class="w-5 h-5 text-blue-600 rounded focus:ring-blue-500">
-                        <div class="ml-3">
-                            <span class="block text-sm font-medium text-gray-900">学生资料管理</span>
-                            <span class="block text-xs text-gray-500">允许查看和修改学生档案</span>
-                        </div>
-                    </label>
-
-                    <label class="flex items-center p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition">
-                        <input type="checkbox" name="perms" value="account_manage" class="w-5 h-5 text-purple-600 rounded focus:ring-purple-500">
-                        <div class="ml-3">
-                            <span class="block text-sm font-medium text-gray-900">账号与密码管理</span>
-                            <span class="block text-xs text-gray-500">允许查看、添加和删除用户账号</span>
-                        </div>
-                    </label>
-
-                    <label class="flex items-center p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition">
-                        <input type="checkbox" name="perms" value="perm_manage" class="w-5 h-5 text-red-600 rounded focus:ring-red-500">
-                        <div class="ml-3">
-                            <span class="block text-sm font-medium text-gray-900">权限分配管理</span>
-                            <span class="block text-xs text-gray-500">允许修改其他人的权限设置</span>
-                        </div>
-                    </label>
-
-                    <div class="pt-4 flex gap-3">
-                        <button type="button" onclick="closeModal('modal-edit-perms')" class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">取消</button>
-                        <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">保存更改</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- DEBUG CONSOLE (保留本地显示，同时会发送云端) -->
-    <div id="debug-console" class="fixed bottom-0 left-0 w-full bg-red-800 text-white p-4 text-xs font-mono z-[100] hidden overflow-y-auto max-h-48">
-        <div class="flex justify-between items-start">
-            <h4 class="font-bold text-red-200 mb-2">⚠️ 系统错误日志 (Debug Mode)</h4>
-            <button onclick="document.getElementById('debug-console').classList.add('hidden')" class="text-white bg-red-700 px-2 rounded">关闭</button>
-        </div>
-        <pre id="debug-content" class="whitespace-pre-wrap"></pre>
-    </div>
-
-    <footer class="bg-slate-800 text-slate-400 text-center p-4 text-xs">
-        <p>&copy; 2025 iSchool v2.6 | 统一工作台版</p>
-    </footer>
-
-    <!-- Firebase Logic -->
     <script type="module">
+        // === 模块化导入 ===
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, query, orderBy, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
-        // === 全局变量定义 ===
-        let app, auth, db;
-        const APP_ID_PATH = 'ischool-v1'; 
-        let USERS_COLLECTION, LOGS_COLLECTION;
-
-        let localUsers = [];
-        let localLogs = [];
-        let currentUser = null;
-        let isDataReady = false;
-        let inactivityTimer;
-        const INACTIVITY_LIMIT = 10 * 60 * 1000;
-
-        const PERM_DICT = {
-            'student_data': { label: '学生资料管理', icon: 'fa-user-graduate', color: 'text-blue-600' },
-            'account_manage': { label: '账号和密码管理', icon: 'fa-users-cog', color: 'text-purple-600' },
-            'perm_manage': { label: '用户权限分配', icon: 'fa-shield-alt', color: 'text-red-600' }
+        // === 1. 全局配置与状态 ===
+        const CONFIG = {
+            appPath: 'ischool-v1',
+            registry: 'schools_registry',
+            firebase: { apiKey: "AIzaSyBZPY533p6K7md9qzlNBGheYRouvonr1F0", authDomain: "ischool-613c2.firebaseapp.com", projectId: "ischool-613c2", storageBucket: "ischool-613c2.firebasestorage.app", messagingSenderId: "134866756486", appId: "1:134866756486:web:d55e797b112e3465b74207" }
         };
 
-        // === 日志与错误处理 ===
-        async function logError(msg, err) {
-            console.error(msg, err);
-            // (省略重复的 debug console 代码以节省篇幅，功能保持不变)
-            const debugConsole = document.getElementById('debug-console');
-            const debugContent = document.getElementById('debug-content');
-            if(debugConsole && debugContent) {
-                debugConsole.classList.remove('hidden');
-                debugContent.textContent += `[${new Date().toLocaleTimeString()}] ${msg}: ${err ? err.message : ''}\n`;
-            }
-            
-            const loginError = document.getElementById('login-error');
-            const loginErrorMsg = document.getElementById('login-error-msg');
-            if (loginError && !loginError.classList.contains('hidden')) {
-                loginErrorMsg.innerText = "系统错误: " + msg;
-            }
-
-            try {
-                if (db && LOGS_COLLECTION) {
-                    const reporterId = currentUser ? currentUser.id : 'unknown_user';
-                    await addDoc(LOGS_COLLECTION, {
-                        user: reporterId,
-                        action: `❌ 报错: ${msg} - ${err ? err.message : 'N/A'}`,
-                        timestamp: new Date().toISOString(),
-                        displayTime: new Date().toLocaleString()
-                    });
-                }
-            } catch (remoteLogErr) { console.warn("无法发送远程日志", remoteLogErr); }
-        }
-
-        window.onerror = function(message, source, lineno, colno, error) {
-            logError("全局未捕获错误", error || { message: message });
+        const STATE = {
+            app: null, auth: null, db: null,
+            user: null, schoolCode: null, schoolName: null,
+            isGodMode: false, isSystemAdmin: false,
+            maintenance: { active: false, msg: "", start: "", end: "" }, // 维护状态
+            data: { users: [], classes: [], students: [], logs: [], allSchools: [] },
+            refs: { users: null, logs: null, classes: null, students: null },
+            selectedClassId: null,
+            unsubscribers: [],
+            timers: { idle: null, input: null }
         };
 
-        // === Firebase 配置 ===
-        const firebaseConfig = {
-            apiKey: "AIzaSyBZPY533p6K7md9qzlNBGheYRouvonr1F0",
-            authDomain: "ischool-613c2.firebaseapp.com",
-            projectId: "ischool-613c2",
-            storageBucket: "ischool-613c2.firebasestorage.app",
-            messagingSenderId: "134866756486",
-            appId: "1:134866756486:web:d55e797b112e3465b74207",
-            measurementId: "G-6GC4G3Q8W8"
-        };
-
-        // === 自动登出逻辑 ===
-        function resetInactivityTimer() {
-            if (!currentUser) return;
-            clearTimeout(inactivityTimer);
-            inactivityTimer = setTimeout(() => {
-                if (currentUser) {
-                    alert("⚠️ 您已闲置超过 10 分钟，为了安全起见，系统将自动登出。");
-                    window.logout();
-                }
-            }, INACTIVITY_LIMIT);
-        }
-
-        function initAutoLogout() {
-            const events = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart'];
-            events.forEach(event => document.addEventListener(event, resetInactivityTimer));
-        }
-
-        // === 初始化 ===
-        async function initApp() {
-            try {
-                app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-                
-                USERS_COLLECTION = collection(db, 'artifacts', APP_ID_PATH, 'public', 'data', 'users');
-                LOGS_COLLECTION = collection(db, 'artifacts', APP_ID_PATH, 'public', 'data', 'logs');
-
-                await signInAnonymously(auth);
-                setupListeners();
-                initAutoLogout();
-                
-                document.getElementById('global-loading').classList.add('hidden');
-                renderView('login');
-                
-            } catch (error) {
-                logError("Firebase Init Error", error);
-                alert("无法连接到云端服务器，请检查网络。");
-            }
-        }
-
-        function setupListeners() {
-            onSnapshot(USERS_COLLECTION, (snapshot) => {
-                localUsers = [];
-                snapshot.forEach((doc) => {
-                    const userData = doc.data();
-                    if (!userData.permissions) {
-                        userData.permissions = userData.role === 'admin' 
-                            ? ['student_data', 'account_manage', 'perm_manage'] 
-                            : ['student_data'];
-                    }
-                    localUsers.push(userData);
-                });
-                isDataReady = true;
-                
-                const statusDiv = document.getElementById('connection-status');
-                if (statusDiv) {
-                    statusDiv.className = 'mt-2 text-xs text-green-500';
-                    statusDiv.innerHTML = `<i class="fas fa-check-circle"></i> 云端已连接`;
-                }
-
-                if (localUsers.length === 0) createDefaultAdmin();
-                
-                if (currentUser) {
-                    const updatedMe = localUsers.find(u => u.id === currentUser.id);
-                    if (updatedMe) {
-                        currentUser = updatedMe;
-                        updateNavbar();
-                        // 如果在工作台，刷新卡片
-                        if(!document.getElementById('dashboard-view').classList.contains('hidden')) {
-                            renderDashboardCards();
-                        }
-                        // 如果在管理台，刷新列表
-                        if(!document.getElementById('admin-view').classList.contains('hidden')) {
-                            renderUserList(); // 也会更新按钮状态
-                        }
-                    } else {
-                        alert("您的账号已被移除。");
-                        window.logout();
-                    }
-                }
-            });
-
-            onSnapshot(LOGS_COLLECTION, (snapshot) => {
-                localLogs = [];
-                snapshot.forEach((doc) => localLogs.push({ ...doc.data(), docId: doc.id }));
-                localLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                if (currentUser && (currentUser.permissions.includes('account_manage') || currentUser.permissions.includes('perm_manage'))) {
-                    renderLogList();
-                }
-            });
-        }
-
-        async function createDefaultAdmin() {
-            try {
-                await setDoc(doc(USERS_COLLECTION, 'admin'), { 
-                    id: 'admin', 
-                    pwd: '123456', 
-                    role: 'admin',
-                    permissions: ['student_data', 'account_manage', 'perm_manage'] 
-                });
-            } catch (e) { logError("创建默认管理员失败", e); }
-        }
-
-        // === 业务逻辑 ===
-
-        window.handleLogin = async (e) => {
-            e.preventDefault();
-            const btn = document.getElementById('btn-login-submit');
-            const originalBtnText = btn.innerHTML;
-            const errorMsg = document.getElementById('login-error');
-            
-            errorMsg.classList.add('hidden');
-
-            try {
-                if (!isDataReady) throw new Error("正在连接数据库，请稍候...");
-                btn.innerHTML = '<div class="loader mr-2"></div> 验证中...';
-                btn.disabled = true;
-
-                const idInput = document.getElementById('login-id').value.trim();
-                const pwdInput = document.getElementById('login-pwd').value.trim();
-                const user = localUsers.find(u => u.id === idInput && u.pwd === pwdInput);
-
-                if (user) {
-                    if (!user.permissions) {
-                        user.permissions = user.role === 'admin' 
-                            ? ['student_data', 'account_manage', 'perm_manage']
-                            : ['student_data'];
-                    }
-                    currentUser = user;
-                    resetInactivityTimer(); 
-                    await addLog(user.id, '登录系统');
-                    
-                    document.getElementById('login-id').value = '';
-                    document.getElementById('login-pwd').value = '';
-
-                    // 统一跳转到工作台，不再区分 admin/teacher
-                    renderView('dashboard'); 
-                    updateNavbar();
-                } else {
-                    document.getElementById('login-error-msg').innerText = "ID 或密码错误";
-                    errorMsg.classList.remove('hidden');
-                }
-            } catch (err) {
-                logError("登录错误", err);
-                document.getElementById('login-error-msg').innerText = err.message;
-                errorMsg.classList.remove('hidden');
-            } finally {
-                btn.innerHTML = originalBtnText;
-                btn.disabled = false;
-            }
-        };
-
-        window.logout = async () => {
-            if (currentUser) {
-                try { await addLog(currentUser.id, '登出系统'); } catch(e) {}
-                currentUser = null;
-                clearTimeout(inactivityTimer); 
-                renderView('login');
-            }
-        };
-
-        // ... (handleAddUser, deleteUser, openPermModal, editPerms 等保持不变，只是需增加权限检查) ...
-
-        window.handleAddUser = async (e) => {
-            e.preventDefault();
-            if (!currentUser.permissions.includes('account_manage')) {
-                alert("无权操作"); return;
-            }
-            const newId = document.getElementById('new-user-id').value.trim();
-            const newPwd = document.getElementById('new-user-pwd').value.trim();
-            if (!newId || !newPwd) return;
-            if (localUsers.some(u => u.id === newId)) { alert('ID 已存在！'); return; }
-
-            try {
-                await setDoc(doc(USERS_COLLECTION, newId), { 
-                    id: newId, pwd: newPwd, role: 'teacher', permissions: ['student_data'] 
-                });
-                await addLog(currentUser.id, `创建用户: ${newId}`);
-                document.getElementById('new-user-id').value = '';
-                document.getElementById('new-user-pwd').value = '';
-                alert(`用户 ${newId} 创建成功！`);
-            } catch (err) { logError("创建用户失败", err); alert("创建失败"); }
-        };
-
-        window.deleteUser = async (userId) => {
-            if (!currentUser.permissions.includes('account_manage')) {
-                alert("无权操作"); return;
-            }
-            if (userId === 'admin') { alert('无法删除超级管理员。'); return; }
-            if(confirm(`确定要删除 ${userId} 吗？`)) {
+        // === 2. 核心应用逻辑 ===
+        const APP = {
+            init: async () => {
                 try {
-                    await deleteDoc(doc(USERS_COLLECTION, userId));
-                    await addLog(currentUser.id, `删除用户: ${userId}`);
-                } catch (err) { logError("删除用户失败", err); alert("删除失败"); }
-            }
-        };
+                    STATE.app = initializeApp(CONFIG.firebase);
+                    STATE.auth = getAuth(STATE.app);
+                    STATE.db = getFirestore(STATE.app);
+                    await signInAnonymously(STATE.auth);
+                    
+                    // 检查 SYSTEM 结构
+                    const sysRef = doc(STATE.db, `artifacts/${CONFIG.appPath}/public/data/${CONFIG.registry}/SYSTEM`);
+                    if(!(await getDoc(sysRef)).exists()){
+                        await setDoc(sysRef, {name:"系统总控中心", code:"SYSTEM", createdAt:new Date().toISOString()});
+                        await setDoc(doc(STATE.db, `artifacts/${CONFIG.appPath}/schools/SYSTEM/users/admin`), {id:'admin', pwd:'admin', role:'system_admin', permissions:['all']});
+                    }
 
-        window.openPermModal = (targetUserId) => {
-            if (!currentUser.permissions.includes('perm_manage')) {
-                alert("无权操作"); return;
-            }
-            const targetUser = localUsers.find(u => u.id === targetUserId);
-            if (!targetUser) return;
-            document.getElementById('edit-perm-target-id').innerText = targetUser.id;
-            document.getElementById('edit-perm-target-id-hidden').value = targetUser.id;
-            const userPerms = targetUser.permissions || [];
-            document.querySelectorAll('#form-edit-perms input[name="perms"]').forEach(cb => cb.checked = userPerms.includes(cb.value));
-            document.getElementById('modal-edit-perms').classList.remove('hidden');
-        };
+                    // 启动全局维护监听
+                    APP.system.listenToMaintenance();
 
-        document.getElementById('form-edit-perms').onsubmit = async (e) => {
-            e.preventDefault();
-            if (!currentUser.permissions.includes('perm_manage')) return;
-            const targetId = document.getElementById('edit-perm-target-id-hidden').value;
-            const selectedPerms = [];
-            document.querySelectorAll('#form-edit-perms input[name="perms"]:checked').forEach(cb => selectedPerms.push(cb.value));
-            try {
-                await updateDoc(doc(USERS_COLLECTION, targetId), { permissions: selectedPerms });
-                await addLog(currentUser.id, `修改权限: ${targetId}`);
-                closeModal('modal-edit-perms');
-                alert('权限更新成功！');
-            } catch (err) { logError("更新权限失败", err); alert('更新失败'); }
-        };
+                    document.getElementById('global-loading').classList.add('hidden');
+                    APP.router.navigate('login');
+                    APP.auth.initIdleTimer();
+                } catch(e) { APP.ui.showError("系统初始化失败", e); }
+            },
 
+            // 数据层
+            data: {
+                bindSchool: (schoolCode, type) => {
+                    APP.data.clearListeners(); 
+                    
+                    const root = `artifacts/${CONFIG.appPath}/schools/${schoolCode}`;
+                    STATE.refs.users = collection(STATE.db, `${root}/users`);
+                    STATE.refs.logs = collection(STATE.db, `${root}/logs`);
+                    STATE.refs.classes = collection(STATE.db, `${root}/classes`);
+                    STATE.refs.students = collection(STATE.db, `${root}/students`);
 
-        // === 视图渲染与导航 ===
-
-        window.navigateTo = (page) => {
-            renderView(page);
-        };
-
-        function renderView(viewName) {
-            const views = ['login-view', 'admin-view', 'dashboard-view', 'student-data-view'];
-            views.forEach(v => document.getElementById(v).classList.add('hidden'));
-            document.getElementById('navbar').classList.add('hidden');
-
-            if (viewName === 'login') {
-                document.getElementById('login-view').classList.remove('hidden');
-            } else {
-                document.getElementById('navbar').classList.remove('hidden');
-                document.getElementById('navbar').classList.add('block');
-                resetInactivityTimer();
-
-                if (viewName === 'dashboard') {
-                    document.getElementById('dashboard-view').classList.remove('hidden');
-                    renderDashboardCards();
-                } 
-                else if (viewName === 'admin') {
-                    // 权限检查：必须有 账号管理 OR 权限分配 才能进后台
-                    const hasAdminAccess = currentUser.permissions.includes('account_manage') || currentUser.permissions.includes('perm_manage');
-                    if (hasAdminAccess) {
-                        document.getElementById('admin-view').classList.remove('hidden');
-                        // 显示/隐藏内部组件
-                        const addPanel = document.getElementById('admin-add-user-panel');
-                        if(currentUser.permissions.includes('account_manage')) {
-                            addPanel.classList.remove('hidden');
-                        } else {
-                            addPanel.classList.add('hidden');
+                    // Users Listener
+                    STATE.unsubscribers.push(onSnapshot(STATE.refs.users, (snap) => {
+                        STATE.data.users = [];
+                        snap.forEach(d => { let u=d.data(); if(!u.permissions) u.permissions=['student_data']; STATE.data.users.push(u); });
+                        if(STATE.user && !STATE.isGodMode && type !== 'system') {
+                            const me = STATE.data.users.find(u => u.id === STATE.user.id);
+                            if(me) { STATE.user = me; APP.ui.updateHeader(); }
                         }
-                        renderUserList();
-                        renderLogList();
-                    } else {
-                        alert("您没有访问系统后台的权限");
-                        renderView('dashboard');
+                        if(APP.router.current === 'admin') APP.ui.renderUserList();
+                    }));
+
+                    // Classes Listener
+                    STATE.unsubscribers.push(onSnapshot(STATE.refs.classes, (snap) => {
+                        STATE.data.classes = [];
+                        snap.forEach(d => STATE.data.classes.push({...d.data(), id:d.id}));
+                        STATE.data.classes.sort((a,b) => String(a.year).localeCompare(String(b.year)) || String(a.name).localeCompare(String(b.name)));
+                        if(APP.router.current === 'student-data') APP.ui.renderStudentView();
+                    }));
+
+                    // Students Listener
+                    STATE.unsubscribers.push(onSnapshot(STATE.refs.students, (snap) => {
+                        STATE.data.students = [];
+                        snap.forEach(d => STATE.data.students.push({...d.data(), id:d.id}));
+                        if(STATE.selectedClassId && APP.router.current === 'student-data') APP.ui.renderStudentList();
+                    }));
+
+                    // Logs Listener
+                    STATE.unsubscribers.push(onSnapshot(STATE.refs.logs, (snap) => {
+                        STATE.data.logs = [];
+                        snap.forEach(d => STATE.data.logs.push({...d.data(), docId:d.id}));
+                        STATE.data.logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                        if(APP.router.current === 'admin') APP.ui.renderLogs();
+                    }));
+
+                    // System Registry Listener
+                    if (type === 'system') {
+                        const regCol = collection(STATE.db, `artifacts/${CONFIG.appPath}/public/data/${CONFIG.registry}`);
+                        STATE.unsubscribers.push(onSnapshot(regCol, (snap) => {
+                            STATE.data.allSchools = [];
+                            snap.forEach(d => { if(d.id!=='SYSTEM') STATE.data.allSchools.push({...d.data(), id:d.id}); });
+                            APP.ui.renderSystemSchoolList();
+                        }));
+                        // Read Maintenance Settings
+                        APP.system.loadSettingsForUI();
                     }
-                } 
-                else if (viewName === 'student-data') {
-                    if (currentUser && currentUser.permissions.includes('student_data')) {
-                        document.getElementById('student-data-view').classList.remove('hidden');
-                        document.getElementById('student-data-view').classList.add('flex');
-                    } else {
-                        alert('您没有访问学生资料的权限');
-                        renderView('dashboard');
+                },
+
+                clearListeners: () => {
+                    STATE.unsubscribers.forEach(unsub => unsub());
+                    STATE.unsubscribers = [];
+                    STATE.data = { users: [], classes: [], students: [], logs: [], allSchools: [] };
+                    STATE.selectedClassId = null;
+                },
+
+                log: async (action) => {
+                    if(!STATE.user || !STATE.refs.logs) return;
+                    try { await addDoc(STATE.refs.logs, {user: STATE.user.id, action, timestamp: new Date().toISOString(), displayTime: new Date().toLocaleString()}); } catch(e){}
+                },
+
+                clearLogs: async () => {
+                    if(!confirm("确定清空日志？")) return;
+                    const q = await getDocs(STATE.refs.logs);
+                    const batch = writeBatch(STATE.db);
+                    STATE.data.logs.forEach(l => batch.delete(doc(STATE.refs.logs, l.docId)));
+                    await batch.commit();
+                }
+            },
+
+            // 系统维护逻辑 (System Maintenance)
+            system: {
+                // 1. 监听维护设置 (全员)
+                listenToMaintenance: () => {
+                    const settingsRef = doc(STATE.db, `artifacts/${CONFIG.appPath}/public/data/system_settings/config`);
+                    onSnapshot(settingsRef, (snap) => {
+                        if(snap.exists()) {
+                            const s = snap.data();
+                            STATE.maintenance = s;
+                            APP.system.checkMaintenanceEnforcement(); // 检查是否需要踢人
+                        }
+                    });
+                },
+
+                // 2. 检查并执行维护限制
+                checkMaintenanceEnforcement: () => {
+                    const { active, start, end, msg } = STATE.maintenance;
+                    const now = new Date().toISOString();
+                    const isMaintTime = active && now >= start && now <= end;
+
+                    // 登录页提示
+                    const banner = document.getElementById('login-maintenance-alert');
+                    if(active && banner) {
+                        banner.classList.remove('hidden');
+                        document.getElementById('login-maintenance-msg').innerText = `${msg} (${new Date(start).toLocaleString()} - ${new Date(end).toLocaleString()})`;
+                    } else if (banner) {
+                        banner.classList.add('hidden');
+                    }
+
+                    // 强制拦截 (如果你不是系统管理员，且当前是维护时间)
+                    // 允许 'SYSTEM' 编号登入，以便管理员关闭维护
+                    if (isMaintTime && STATE.user && !STATE.isSystemAdmin && STATE.schoolCode !== 'SYSTEM') {
+                        document.getElementById('maintenance-overlay').classList.remove('hidden');
+                        document.getElementById('maintenance-msg-overlay').innerText = msg;
+                        document.getElementById('maint-start-time').innerText = new Date(start).toLocaleString();
+                        document.getElementById('maint-end-time').innerText = new Date(end).toLocaleString();
+                        
+                        // 强制断开数据连接
+                        APP.data.clearListeners();
+                        STATE.user = null; // 软登出
+                    }
+                },
+
+                // 3. 保存设置 (Admin)
+                saveSettings: async (e) => {
+                    e.preventDefault();
+                    if(!STATE.isSystemAdmin) return;
+                    const data = {
+                        msg: document.getElementById('maint-msg').value,
+                        start: document.getElementById('maint-start').value,
+                        end: document.getElementById('maint-end').value,
+                        active: document.getElementById('maint-active').checked
+                    };
+                    await setDoc(doc(STATE.db, `artifacts/${CONFIG.appPath}/public/data/system_settings/config`), data);
+                    alert("维护设置已更新");
+                },
+
+                // 4. 加载设置到UI
+                loadSettingsForUI: async () => {
+                    if(!STATE.isSystemAdmin) return;
+                    const snap = await getDoc(doc(STATE.db, `artifacts/${CONFIG.appPath}/public/data/system_settings/config`));
+                    if(snap.exists()) {
+                        const s = snap.data();
+                        document.getElementById('maint-msg').value = s.msg || "";
+                        document.getElementById('maint-start').value = s.start || "";
+                        document.getElementById('maint-end').value = s.end || "";
+                        document.getElementById('maint-active').checked = s.active || false;
                     }
                 }
-            }
-        }
+            },
 
-        // === 动态生成工作台卡片 ===
-        function renderDashboardCards() {
-            const container = document.getElementById('dashboard-card-container');
-            container.innerHTML = '';
+            // 认证逻辑
+            auth: {
+                login: async (e) => {
+                    e.preventDefault();
+                    // 维护模式检查 (前端初步拦截)
+                    const code = document.getElementById('login-school-code').value.trim().toUpperCase();
+                    const { active, start, end } = STATE.maintenance;
+                    const now = new Date().toISOString();
+                    const isMaintTime = active && now >= start && now <= end;
 
-            if (!currentUser) return;
-            const perms = currentUser.permissions || [];
+                    // 如果是维护时间，且不是尝试登录 SYSTEM，则禁止
+                    if (isMaintTime && code !== 'SYSTEM') {
+                        return alert(`系统维护中，暂时无法登入。\n${STATE.maintenance.msg}`);
+                    }
 
-            // 1. 学生资料卡片
-            if (perms.includes('student_data')) {
-                container.innerHTML += `
-                <div onclick="navigateTo('student-data')" class="dashboard-card bg-white rounded-xl p-6 shadow-sm cursor-pointer border border-gray-100 flex flex-col items-center text-center group">
-                    <div class="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-blue-100 transition">
-                        <i class="fas fa-user-graduate text-2xl text-blue-600"></i>
-                    </div>
-                    <h3 class="text-xl font-bold text-gray-800 mb-2">学生资料</h3>
-                    <p class="text-sm text-gray-500">查看、搜索及管理全校学生档案信息。</p>
-                </div>`;
-            }
+                    const btn = document.getElementById('btn-login-submit');
+                    const id = document.getElementById('login-id').value.trim();
+                    const pwd = document.getElementById('login-pwd').value.trim();
+                    const errBox = document.getElementById('login-error');
 
-            // 2. 系统后台管理卡片 (只要有账号管理 或 权限分配 权限就显示)
-            if (perms.includes('account_manage') || perms.includes('perm_manage')) {
-                container.innerHTML += `
-                <div onclick="navigateTo('admin')" class="dashboard-card bg-white rounded-xl p-6 shadow-sm cursor-pointer border border-gray-100 flex flex-col items-center text-center group">
-                    <div class="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-purple-100 transition">
-                        <i class="fas fa-cogs text-2xl text-purple-600"></i>
-                    </div>
-                    <h3 class="text-xl font-bold text-gray-800 mb-2">系统后台管理</h3>
-                    <p class="text-sm text-gray-500">管理用户账号、密码、权限分配及查看日志。</p>
-                </div>`;
-            }
-        }
+                    btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> 验证中...';
+                    errBox.classList.add('hidden');
 
-        // ... (renderLogList 保持不变) ...
-        function renderLogList() {
-            // ...省略重复代码，保持逻辑一致...
-            const logContainer = document.getElementById('log-container');
-            if (!logContainer) return;
-            logContainer.innerHTML = '';
-            if (localLogs.length === 0) {
-                logContainer.innerHTML = '<div class="text-center text-gray-400 mt-10">暂无日志记录</div>';
-            } else {
-                localLogs.forEach(log => {
-                    const item = document.createElement('div');
-                    item.className = 'mb-3 pb-3 border-b border-gray-100 last:border-0 animate-fade-in';
-                    let iconColor = 'text-gray-400'; let bgColor = ''; let textColor = 'text-gray-500';
-                    if (log.action.includes('登录')) iconColor = 'text-green-500';
-                    else if (log.action.includes('登出')) iconColor = 'text-orange-500';
-                    else if (log.action.includes('报错') || log.action.includes('❌')) {
-                        iconColor = 'text-red-600'; bgColor = 'bg-red-50 p-2 rounded border border-red-100'; textColor = 'text-red-700 font-medium';
-                    } else iconColor = 'text-blue-500';
-                    item.innerHTML = `<div class="${bgColor}"><div class="flex justify-between items-start"><div class="text-sm text-gray-800 font-medium"><i class="fas fa-circle text-[8px] ${iconColor} mr-2 align-middle"></i>${log.user}</div><div class="text-xs text-gray-400">${log.displayTime}</div></div><div class="text-xs ${textColor} ml-5 mt-1 break-words">${log.action}</div></div>`;
-                    logContainer.appendChild(item);
-                });
-            }
-        }
+                    try {
+                        const sRef = doc(STATE.db, `artifacts/${CONFIG.appPath}/public/data/${CONFIG.registry}/${code}`);
+                        const sSnap = await getDoc(sRef);
+                        if(!sSnap.exists()) throw new Error("学校编号不存在");
 
-        function updateNavbar() {
-            if (currentUser) document.getElementById('nav-user-id').innerText = currentUser.id;
-        }
+                        const uRef = doc(STATE.db, `artifacts/${CONFIG.appPath}/schools/${code}/users/${id}`);
+                        const uSnap = await getDoc(uRef);
+                        if(!uSnap.exists() || uSnap.data().pwd !== pwd) throw new Error("用户名或密码错误");
 
-        function renderUserList() {
-            const tbody = document.getElementById('user-list-body');
-            if (!tbody) return;
-            tbody.innerHTML = '';
-            localUsers.forEach(user => {
-                const tr = document.createElement('tr');
-                tr.className = 'bg-white border-b hover:bg-gray-50 transition';
-                const isAdmin = user.role === 'admin';
-                const perms = user.permissions || [];
-                let permBadges = '';
-                if (perms.includes('student_data')) permBadges += `<span class="text-[10px] bg-blue-100 text-blue-800 px-1 py-0.5 rounded mr-1" title="学生资料"><i class="fas fa-user-graduate"></i></span>`;
-                if (perms.includes('account_manage')) permBadges += `<span class="text-[10px] bg-purple-100 text-purple-800 px-1 py-0.5 rounded mr-1" title="账号管理"><i class="fas fa-users-cog"></i></span>`;
-                if (perms.includes('perm_manage')) permBadges += `<span class="text-[10px] bg-red-100 text-red-800 px-1 py-0.5 rounded mr-1" title="权限管理"><i class="fas fa-shield-alt"></i></span>`;
-                if (permBadges === '') permBadges = '<span class="text-gray-300 text-xs">无权限</span>';
+                        STATE.user = uSnap.data();
+                        if(!STATE.user.permissions) STATE.user.permissions = STATE.user.role==='admin'?['student_data','account_manage','perm_manage']:['student_data'];
+                        
+                        STATE.schoolCode = code;
+                        STATE.schoolName = sSnap.data().name;
 
-                // 权限检查：是否能看到删除和设置权限按钮
-                const canDelete = currentUser.permissions.includes('account_manage');
-                const canEditPerm = currentUser.permissions.includes('perm_manage');
+                        if(code === 'SYSTEM' && STATE.user.role === 'system_admin') {
+                            STATE.isSystemAdmin = true;
+                            APP.data.bindSchool('SYSTEM', 'system');
+                            APP.router.navigate('system-console');
+                        } else {
+                            STATE.isSystemAdmin = false;
+                            APP.data.bindSchool(code, 'school');
+                            APP.router.navigate('dashboard');
+                        }
+                        
+                        setTimeout(() => APP.data.log('登录系统'), 1000);
+                        document.getElementById('form-login').reset();
+                        APP.ui.updateHeader();
 
-                let actions = '';
-                if (user.id === 'admin') {
-                    actions = '<span class="text-xs text-gray-300">不可操作</span>';
-                } else {
-                    if (canEditPerm) actions += `<button onclick="openPermModal('${user.id}')" class="text-blue-500 hover:text-blue-700 bg-blue-50 px-2 py-1 rounded text-xs border border-blue-200 mr-2"><i class="fas fa-cog mr-1"></i>权限</button>`;
-                    if (canDelete) actions += `<button onclick="deleteUser('${user.id}')" class="text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded text-xs border border-red-200"><i class="fas fa-trash"></i></button>`;
+                    } catch(err) {
+                        errBox.querySelector('span').innerText = err.message;
+                        errBox.classList.remove('hidden');
+                    } finally {
+                        btn.disabled = false; btn.innerHTML = '<span>进入系统</span> <i class="fas fa-arrow-right"></i>';
+                    }
+                },
+
+                logout: () => { location.reload(); },
+
+                checkSchoolCode: (val) => {
+                    if(val.length < 4) return;
+                    clearTimeout(STATE.timers.input);
+                    const disp = document.getElementById('school-name-display');
+                    disp.style.opacity = '0';
+                    STATE.timers.input = setTimeout(async () => {
+                        try {
+                            const ref = doc(STATE.db, `artifacts/${CONFIG.appPath}/public/data/${CONFIG.registry}/${val.toUpperCase()}`);
+                            const snap = await getDoc(ref);
+                            if(snap.exists()) {
+                                disp.innerHTML = `<span class="text-green-600"><i class="fas fa-check-circle"></i> ${snap.data().name}</span>`;
+                            } else {
+                                disp.innerHTML = `<span class="text-red-400"><i class="fas fa-times-circle"></i> 编号不存在</span>`;
+                            }
+                            disp.style.opacity = '1'; disp.style.transform = 'translateY(0)';
+                        } catch(e){}
+                    }, 500);
+                },
+
+                initIdleTimer: () => {
+                    const reset = () => {
+                        if(STATE.user) {
+                            clearTimeout(STATE.timers.idle);
+                            STATE.timers.idle = setTimeout(() => { alert("长时间未操作，为了安全已自动登出"); APP.auth.logout(); }, 10 * 60 * 1000);
+                        }
+                    };
+                    ['mousemove','keypress','click'].forEach(e => document.addEventListener(e, reset));
+                },
+
+                enterGodMode: (code, name) => {
+                    STATE.isGodMode = true;
+                    STATE.schoolCode = code;
+                    STATE.schoolName = name;
+                    APP.data.bindSchool(code, 'school');
+                    document.getElementById('navbar').classList.remove('bg-slate-800');
+                    document.getElementById('navbar').classList.add('bg-yellow-600');
+                    document.getElementById('btn-god-mode-exit').classList.remove('hidden');
+                    APP.router.navigate('dashboard');
+                    APP.ui.updateHeader();
+                },
+
+                exitGodMode: () => {
+                    STATE.isGodMode = false;
+                    STATE.schoolCode = 'SYSTEM';
+                    STATE.schoolName = '系统总控中心';
+                    APP.data.bindSchool('SYSTEM', 'system');
+                    document.getElementById('navbar').classList.add('bg-slate-800');
+                    document.getElementById('navbar').classList.remove('bg-yellow-600');
+                    document.getElementById('btn-god-mode-exit').classList.add('hidden');
+                    APP.router.navigate('system-console');
+                    APP.ui.updateHeader();
                 }
+            },
 
-                tr.innerHTML = `
-                    <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">${user.id} <span class="text-xs text-gray-400 ml-1">(${isAdmin ? '管理员' : '教师'})</span></td>
-                    <td class="px-6 py-4">${permBadges}</td>
-                    <td class="px-6 py-4 font-mono text-gray-400 text-xs">${isAdmin ? '******' : user.pwd}</td>
-                    <td class="px-6 py-4 text-right flex justify-end gap-2">${actions}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
+            // 路由与视图
+            router: {
+                current: 'login',
+                navigate: (view) => {
+                    APP.router.current = view;
+                    const views = ['view-login', 'view-system-console', 'view-dashboard', 'view-admin', 'view-student-data'];
+                    views.forEach(v => document.getElementById(v).classList.add('hidden'));
+                    document.getElementById('navbar').classList.add('hidden');
 
-        async function addLog(userId, action) {
-            try {
-                await addDoc(LOGS_COLLECTION, {
-                    user: userId,
-                    action: action,
-                    timestamp: new Date().toISOString(),
-                    displayTime: new Date().toLocaleString()
-                });
-            } catch (err) { console.error("Logging failed", err); }
-        }
+                    if(view === 'login') {
+                        document.getElementById('view-login').classList.remove('hidden');
+                    } else {
+                        document.getElementById('navbar').classList.remove('hidden');
+                        document.getElementById(`view-${view}`).classList.remove('hidden');
+                        if(view === 'dashboard') APP.ui.renderDashboard();
+                        if(view === 'admin') { APP.ui.renderUserList(); APP.ui.renderLogs(); }
+                        if(view === 'student-data') APP.ui.renderStudentView();
+                    }
+                }
+            },
 
-        window.showMyPermissions = () => {
-            if (!currentUser) return;
-            document.getElementById('modal-my-id').innerText = currentUser.id;
-            const listContainer = document.getElementById('modal-my-perm-list');
-            listContainer.innerHTML = '';
-            const perms = currentUser.permissions || [];
-            if (perms.length === 0) listContainer.innerHTML = '<div class="text-gray-400 text-center py-4">暂无特殊权限</div>';
-            else {
-                perms.forEach(permKey => {
-                    const info = PERM_DICT[permKey];
-                    if (info) listContainer.innerHTML += `<div class="flex items-center p-3 bg-gray-50 rounded-lg border border-gray-100"><i class="fas ${info.icon} ${info.color} w-8 text-center text-lg"></i><span class="font-medium text-gray-700">${info.label}</span><i class="fas fa-check text-green-500 ml-auto"></i></div>`;
-                });
+            // UI 渲染
+            ui: {
+                updateHeader: () => {
+                    if(!STATE.user) return;
+                    document.getElementById('nav-user-id').innerText = STATE.user.id + (STATE.isGodMode ? ' (上帝)' : '');
+                    document.getElementById('nav-school-name').innerText = STATE.schoolName;
+                },
+
+                renderDashboard: () => {
+                    const container = document.getElementById('dashboard-card-container');
+                    container.innerHTML = '';
+                    document.getElementById('dashboard-school-name').innerText = STATE.schoolName;
+                    const perms = STATE.isGodMode ? ['student_data', 'account_manage', 'perm_manage'] : (STATE.user.permissions || []);
+
+                    if(perms.includes('student_data')) {
+                        container.innerHTML += `<div onclick="APP.router.navigate('student-data')" class="dashboard-card bg-white rounded-xl p-8 shadow-sm cursor-pointer border border-gray-100 flex flex-col items-center text-center group"><div class="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6 group-hover:bg-blue-100 transition"><i class="fas fa-user-graduate text-3xl text-blue-600"></i></div><h3 class="text-xl font-bold text-gray-800 mb-2">学生资料库</h3><p class="text-sm text-gray-500">管理本校学生档案信息</p></div>`;
+                    }
+                    if(perms.includes('account_manage') || perms.includes('perm_manage')) {
+                        container.innerHTML += `<div onclick="APP.router.navigate('admin')" class="dashboard-card bg-white rounded-xl p-8 shadow-sm cursor-pointer border border-gray-100 flex flex-col items-center text-center group"><div class="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mb-6 group-hover:bg-purple-100 transition"><i class="fas fa-cogs text-3xl text-purple-600"></i></div><h3 class="text-xl font-bold text-gray-800 mb-2">本校后台管理</h3><p class="text-sm text-gray-500">账号权限与系统日志</p></div>`;
+                    }
+                },
+
+                renderUserList: () => {
+                    const tb = document.getElementById('user-list-body'); tb.innerHTML = '';
+                    const canDelete = STATE.isGodMode || (STATE.user.permissions && STATE.user.permissions.includes('account_manage'));
+                    const canEditPerm = STATE.isGodMode || (STATE.user.permissions && STATE.user.permissions.includes('perm_manage'));
+
+                    STATE.data.users.forEach(u => {
+                        const pBadges = (u.permissions||[]).map(p => {
+                            let icon = 'circle', color = 'gray', text = p;
+                            if(p === 'student_data') { icon='user-graduate'; color='blue'; text='学生'; }
+                            if(p === 'account_manage') { icon='users-cog'; color='purple'; text='账号'; }
+                            if(p === 'perm_manage') { icon='key'; color='orange'; text='权限'; }
+                            return `<span class="text-[10px] bg-${color}-100 text-${color}-700 px-1.5 py-0.5 rounded mr-1 flex items-center gap-1 inline-flex"><i class="fas fa-${icon}"></i> ${text}</span>`;
+                        }).join('');
+
+                        let actions = '';
+                        if(u.id !== 'admin') {
+                            if(canEditPerm) actions += `<button onclick="APP.ui.openPermModal('${u.id}')" class="text-blue-500 hover:bg-blue-50 p-1 rounded mr-2"><i class="fas fa-cog"></i></button>`;
+                            if(canDelete) actions += `<button onclick="APP.actions.deleteUser('${u.id}')" class="text-red-500 hover:bg-red-50 p-1 rounded"><i class="fas fa-trash"></i></button>`;
+                        } else { actions = '<span class="text-xs text-gray-300">系统保护</span>'; }
+                        tb.innerHTML += `<tr class="border-b last:border-0 hover:bg-gray-50 transition"><td class="px-6 py-3 font-medium text-gray-700">${u.id}</td><td class="px-6 py-3">${pBadges}</td><td class="px-6 py-3 font-mono text-xs text-gray-400">***</td><td class="px-6 py-3 text-right">${actions}</td></tr>`;
+                    });
+                },
+
+                renderLogs: () => {
+                    const c = document.getElementById('log-container'); c.innerHTML = '';
+                    if(STATE.data.logs.length === 0) { c.innerHTML = '<div class="text-center text-gray-400 py-10">暂无日志</div>'; return; }
+                    STATE.data.logs.forEach(l => {
+                        let color = 'text-gray-600', icon = 'circle', bg = '';
+                        if(l.action.includes('登录')) { color = 'text-green-600'; icon = 'sign-in-alt'; }
+                        else if(l.action.includes('添加') || l.action.includes('创建')) { color = 'text-blue-600'; icon = 'plus'; }
+                        else if(l.action.includes('删除')) { color = 'text-red-600'; icon = 'trash'; bg = 'bg-red-50'; }
+                        else if(l.action.includes('❌')) { color = 'text-red-700'; icon = 'exclamation-triangle'; bg = 'bg-red-100 border border-red-200'; }
+                        c.innerHTML += `<div class="flex items-start gap-3 p-2 rounded ${bg} text-xs"><div class="mt-0.5 ${color}"><i class="fas fa-${icon}"></i></div><div class="flex-1"><div class="flex justify-between mb-0.5"><span class="font-bold text-gray-700">${l.user}</span><span class="text-gray-400 scale-90 origin-right">${l.displayTime}</span></div><p class="${color}">${l.action}</p></div></div>`;
+                    });
+                },
+
+                renderSystemSchoolList: () => {
+                    const t = document.getElementById('system-school-list'); t.innerHTML = '';
+                    STATE.data.allSchools.forEach(s => {
+                        t.innerHTML += `<tr class="border-b hover:bg-blue-50 transition"><td class="px-4 py-3 font-mono font-bold text-blue-600">${s.code}</td><td class="px-4 py-3 font-bold text-gray-700">${s.name}</td><td class="px-4 py-3 text-right"><button onclick="APP.auth.enterGodMode('${s.code}', '${s.name}')" class="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-xs font-bold shadow mr-2"><i class="fas fa-eye"></i> 进入</button><button onclick="APP.actions.deleteSchool('${s.code}')" class="text-red-400 hover:text-red-600"><i class="fas fa-trash"></i></button></td></tr>`;
+                    });
+                },
+
+                renderStudentView: () => {
+                    const btn = document.getElementById('btn-manage-classes');
+                    if(STATE.user.role === 'admin' || STATE.isGodMode) btn.classList.remove('hidden'); else btn.classList.add('hidden');
+                    const list = document.getElementById('class-list-container'); list.innerHTML = '';
+                    STATE.data.classes.forEach(c => {
+                        const active = c.id === STATE.selectedClassId ? 'active bg-blue-50 text-blue-700 font-bold shadow-sm' : 'hover:bg-gray-50 text-gray-600';
+                        list.innerHTML += `<div onclick="APP.actions.selectClass('${c.id}')" class="class-btn p-3 m-1 rounded cursor-pointer transition flex justify-between items-center ${active}"><span><span class="text-xs text-gray-400 mr-1">${c.year}</span> ${c.name}</span> ${active.includes('active') ? '<i class="fas fa-chevron-right text-xs"></i>' : ''}</div>`;
+                    });
+                    if(STATE.selectedClassId) APP.ui.renderStudentList();
+                },
+
+                renderStudentList: () => {
+                    const t = document.getElementById('student-list-body');
+                    const cls = STATE.data.classes.find(c => c.id === STATE.selectedClassId);
+                    if(!cls) { STATE.selectedClassId = null; return APP.ui.renderStudentView(); }
+                    document.getElementById('current-class-title').innerText = `${cls.year} - ${cls.name}班`;
+                    document.getElementById('current-class-info').innerText = `班级 ID: ${cls.id}`;
+                    document.getElementById('btn-add-student').classList.remove('hidden');
+                    const students = STATE.data.students.filter(s => s.classId === STATE.selectedClassId);
+                    document.getElementById('student-count').innerText = students.length;
+                    t.innerHTML = '';
+                    if(students.length === 0) t.innerHTML = '<tr><td colspan="4" class="text-center py-10 text-gray-400 italic">暂无学生，请添加</td></tr>';
+                    students.forEach(s => {
+                        t.innerHTML += `<tr class="border-b hover:bg-gray-50 transition"><td class="px-6 py-3 font-medium text-gray-800">${s.name}</td><td class="px-6 py-3"><span class="px-2 py-0.5 rounded text-xs ${s.gender==='男'?'bg-blue-100 text-blue-600':'bg-pink-100 text-pink-600'}">${s.gender}</span></td><td class="px-6 py-3 font-mono text-gray-500">${s.ic||'-'}</td><td class="px-6 py-3 text-right"><button onclick="APP.ui.openStudentModal('${s.id}')" class="text-blue-500 hover:bg-blue-50 p-1 rounded mr-2"><i class="fas fa-edit"></i></button><button onclick="APP.actions.deleteStudent('${s.id}')" class="text-red-500 hover:bg-red-50 p-1 rounded"><i class="fas fa-trash"></i></button></td></tr>`;
+                    });
+                },
+
+                toggleMaintenanceLogin: () => {
+                    // 后门：点击5次Logo或其他操作？这里简单起见，点击文字直接关闭遮罩，进入登录页
+                    document.getElementById('maintenance-overlay').classList.add('hidden');
+                    document.getElementById('login-school-code').value = 'SYSTEM';
+                    APP.auth.checkSchoolCode('SYSTEM');
+                },
+
+                openClassModal: () => {
+                    document.getElementById('modal-classes').classList.remove('hidden');
+                    const t = document.getElementById('manage-class-list-body'); t.innerHTML='';
+                    STATE.data.classes.forEach(c => t.innerHTML+=`<tr class="border-b"><td class="px-6 py-2">${c.year}</td><td class="px-6 py-2 font-bold text-blue-600 cursor-pointer hover:underline" onclick="APP.actions.updateClass('${c.id}', '${c.name}')">${c.name} <i class="fas fa-pen text-[10px] text-gray-300"></i></td><td class="px-6 py-2 text-right"><button onclick="APP.actions.deleteClass('${c.id}')" class="text-red-400 hover:text-red-600"><i class="fas fa-trash"></i></button></td></tr>`);
+                },
+                openStudentModal: (sid) => {
+                    if(!STATE.selectedClassId) return alert("请先选择班级");
+                    document.getElementById('modal-student').classList.remove('hidden');
+                    const cls = STATE.data.classes.find(c => c.id === STATE.selectedClassId);
+                    document.getElementById('student-class-display').value = `${cls.year} ${cls.name}`;
+                    if(sid) {
+                        const s = STATE.data.students.find(x=>x.id===sid);
+                        document.getElementById('student-id').value = s.id;
+                        document.getElementById('student-name').value = s.name;
+                        document.getElementById('student-gender').value = s.gender;
+                        document.getElementById('student-ic').value = s.ic||'';
+                        document.getElementById('modal-student-title').innerText = "编辑学生";
+                    } else {
+                        document.getElementById('student-id').value = '';
+                        document.getElementById('form-student').reset();
+                        document.getElementById('student-gender').value = '男';
+                        document.getElementById('modal-student-title').innerText = "添加学生";
+                    }
+                },
+                openPermModal: (uid) => {
+                    const u = STATE.data.users.find(x=>x.id===uid);
+                    document.getElementById('edit-perm-target-id').innerText = uid;
+                    document.getElementById('modal-edit-perms').classList.remove('hidden');
+                    document.querySelectorAll('input[name="perms"]').forEach(cb => cb.checked = (u.permissions||[]).includes(cb.value));
+                },
+                showMyPermissions: () => {
+                    if(!STATE.user) return;
+                    document.getElementById('modal-my-id').innerText = STATE.user.id;
+                    const c = document.getElementById('modal-my-perm-list'); c.innerHTML='';
+                    const map = {'student_data':'学生资料管理','account_manage':'账号管理','perm_manage':'权限分配'};
+                    (STATE.user.permissions||[]).forEach(p => c.innerHTML+=`<div class="bg-blue-50 text-blue-700 px-3 py-2 rounded text-sm font-medium flex items-center gap-2"><i class="fas fa-check-circle"></i> ${map[p]||p}</div>`);
+                    document.getElementById('modal-my-perms').classList.remove('hidden');
+                },
+                closeModal: (id) => document.getElementById(id).classList.add('hidden'),
+                showError: (msg, err) => {
+                    console.error(msg, err);
+                    const c = document.getElementById('debug-console');
+                    c.classList.remove('hidden');
+                    document.getElementById('debug-content').innerText = `${new Date().toLocaleTimeString()} - ${msg}: ${err?.message||''}`;
+                }
+            },
+
+            // 3. 用户操作
+            actions: {
+                addUser: async (e) => {
+                    e.preventDefault();
+                    const id=document.getElementById('new-user-id').value.trim();
+                    const pwd=document.getElementById('new-user-pwd').value.trim();
+                    try { await setDoc(doc(STATE.refs.users, id), {id, pwd, role:'teacher', permissions:['student_data']}); document.getElementById('form-add-user').reset(); APP.data.log(`创建账号: ${id}`); } catch(e) { alert("添加失败"); }
+                },
+                deleteUser: async (id) => { if(confirm(`删除 ${id}?`)) { await deleteDoc(doc(STATE.refs.users, id)); APP.data.log(`删除账号: ${id}`); }},
+                savePerms: async (e) => {
+                    e.preventDefault();
+                    const id = document.getElementById('edit-perm-target-id').innerText;
+                    const p = []; document.querySelectorAll('input[name="perms"]:checked').forEach(cb=>p.push(cb.value));
+                    await updateDoc(doc(STATE.refs.users, id), {permissions: p});
+                    APP.ui.closeModal('modal-edit-perms');
+                    APP.data.log(`修改权限: ${id}`);
+                },
+                createSchool: async (e) => {
+                    e.preventDefault();
+                    const n = document.getElementById('sys-school-name').value.trim();
+                    const c = document.getElementById('sys-school-code').value.trim().toUpperCase();
+                    const p = document.getElementById('sys-admin-pwd').value.trim();
+                    if(c.length !== 7) return alert("编号格式错误");
+                    try {
+                        const regRef = doc(STATE.db, `artifacts/${CONFIG.appPath}/public/data/${CONFIG.registry}/${c}`);
+                        if((await getDoc(regRef)).exists()) return alert("编号已存在");
+                        await setDoc(regRef, {name:n, code:c, createdAt:new Date().toISOString()});
+                        await setDoc(doc(STATE.db, `artifacts/${CONFIG.appPath}/schools/${c}/users/admin`), {id:'admin', pwd:p, role:'admin', permissions:['student_data','account_manage','perm_manage']});
+                        document.getElementById('form-create-school').reset(); alert("创建成功");
+                    } catch(e) { alert("创建失败"); }
+                },
+                deleteSchool: async (c) => { if(confirm("危险！确认删除该学校索引？(数据需手动清理)")) await deleteDoc(doc(STATE.db, `artifacts/${CONFIG.appPath}/public/data/${CONFIG.registry}/${c}`)); },
+                addClass: async (e) => { e.preventDefault(); await addDoc(STATE.refs.classes, {year:document.getElementById('input-class-year').value, name:document.getElementById('input-class-name').value}); document.getElementById('form-add-class').reset(); },
+                deleteClass: async (id) => { if(confirm("删除班级?")) await deleteDoc(doc(STATE.refs.classes, id)); },
+                updateClass: async (id, old) => { const n = prompt("新名称", old); if(n&&n!==old) await updateDoc(doc(STATE.refs.classes, id), {name:n}); },
+                selectClass: (id) => { STATE.selectedClassId = id; APP.ui.renderStudentView(); },
+                saveStudent: async (e) => {
+                    e.preventDefault();
+                    const sid = document.getElementById('student-id').value;
+                    const data = { name: document.getElementById('student-name').value, gender: document.getElementById('student-gender').value, ic: document.getElementById('student-ic').value, classId: STATE.selectedClassId };
+                    if(sid) await updateDoc(doc(STATE.refs.students, sid), data); else await addDoc(STATE.refs.students, data);
+                    APP.ui.closeModal('modal-student');
+                },
+                deleteStudent: async (id) => { if(confirm("删除学生?")) await deleteDoc(doc(STATE.refs.students, id)); }
             }
-            document.getElementById('modal-my-perms').classList.remove('hidden');
         };
-        window.closeModal = (modalId) => document.getElementById(modalId).classList.add('hidden');
-        window.clearLogs = async () => {
-             if(!confirm('确定要清空所有历史日志吗？')) return;
-            try {
-                const snapshot = await getDocs(LOGS_COLLECTION);
-                const batch = writeBatch(db);
-                snapshot.docs.forEach((doc) => batch.delete(doc.ref));
-                await batch.commit();
-            } catch (err) { logError("Clear logs failed:", err); alert("清空失败"); }
-        }
 
-        document.getElementById('form-login').onsubmit = window.handleLogin;
-        document.getElementById('form-add-user').onsubmit = window.handleAddUser;
-        document.getElementById('btn-logout').onclick = window.logout;
-        document.getElementById('btn-clear-logs').onclick = window.clearLogs;
+        // === 事件绑定 ===
+        window.APP = APP;
+        document.getElementById('form-login').onsubmit = APP.auth.login;
+        document.getElementById('form-create-school').onsubmit = APP.actions.createSchool;
+        document.getElementById('form-maintenance').onsubmit = APP.system.saveSettings;
+        document.getElementById('form-add-user').onsubmit = APP.actions.addUser;
+        document.getElementById('form-edit-perms').onsubmit = APP.actions.savePerms;
+        document.getElementById('form-add-class').onsubmit = APP.actions.addClass;
+        document.getElementById('form-student').onsubmit = APP.actions.saveStudent;
 
-        initApp();
+        APP.init();
     </script>
 </body>
 </html>
