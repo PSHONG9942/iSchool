@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iSchool 校园资料管理系统 (云端版)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f3f4f6;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+        }
+        /* 加载动画 */
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 3px solid #3498db;
+            width: 20px;
+            height: 20px;
+            -webkit-animation: spin 1s linear infinite; /* Safari */
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- 顶部导航栏 -->
+    <nav id="navbar" class="bg-slate-800 text-white p-4 hidden shadow-lg">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-school text-2xl text-blue-400"></i>
+                <h1 class="text-xl font-bold">iSchool 云端系统</h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <span id="nav-user-info" class="text-gray-300 text-sm"></span>
+                <button id="btn-logout" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded transition text-sm">
+                    <i class="fas fa-sign-out-alt mr-1"></i> 登出
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主要内容区域 -->
+    <main class="flex-grow flex items-center justify-center p-4 relative">
+        
+        <!-- 全局加载状态 -->
+        <div id="global-loading" class="absolute inset-0 bg-gray-100 z-50 flex flex-col items-center justify-center">
+            <div class="text-4xl text-blue-600 mb-4"><i class="fas fa-circle-notch fa-spin"></i></div>
+            <p class="text-gray-500">正在连接 Firebase 云端数据库...</p>
+        </div>
+
+        <!-- 1. 登录界面 -->
+        <div id="login-view" class="w-full max-w-md hidden">
+            <div class="glass-panel rounded-2xl p-8">
+                <div class="text-center mb-8">
+                    <div class="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-cloud text-blue-600 text-2xl"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-gray-800">iSchool 登录</h2>
+                    <p class="text-gray-500 text-sm mt-1">云端数据实时同步</p>
+                </div>
+                
+                <form id="form-login" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">用户 ID</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-3 text-gray-400"><i class="fas fa-user"></i></span>
+                            <input type="text" id="login-id" required 
+                                class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                                placeholder="例如: admin">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-3 text-gray-400"><i class="fas fa-lock"></i></span>
+                            <input type="password" id="login-pwd" required 
+                                class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                                placeholder="••••••">
+                        </div>
+                    </div>
+                    <div id="login-error" class="text-red-500 text-sm text-center hidden">
+                        <i class="fas fa-exclamation-circle mr-1"></i> ID 或密码错误
+                    </div>
+                    <button type="submit" id="btn-login-submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition shadow-md flex justify-center items-center gap-2">
+                        <span>进入系统</span>
+                    </button>
+                </form>
+                
+                <div class="mt-6 text-center text-xs text-gray-400">
+                    <p>默认管理员 ID: <strong>admin</strong> / 密码: <strong>123456</strong></p>
+                    <p class="mt-1 text-blue-300">(首次运行若无数据会自动创建)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. Admin 管理界面 -->
+        <div id="admin-view" class="w-full max-w-6xl hidden h-full">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+                
+                <!-- 左侧：用户管理 -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- 添加用户卡片 -->
+                    <div class="glass-panel rounded-xl p-6">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4 border-b pb-2">
+                            <i class="fas fa-user-plus text-green-600 mr-2"></i>创建新账号 (云端)
+                        </h3>
+                        <form id="form-add-user" class="flex flex-col md:flex-row gap-4 items-end">
+                            <div class="flex-1 w-full">
+                                <label class="text-xs text-gray-500">新用户 ID</label>
+                                <input type="text" id="new-user-id" required class="w-full mt-1 px-3 py-2 border rounded outline-none focus:border-blue-500">
+                            </div>
+                            <div class="flex-1 w-full">
+                                <label class="text-xs text-gray-500">设置密码</label>
+                                <input type="text" id="new-user-pwd" required class="w-full mt-1 px-3 py-2 border rounded outline-none focus:border-blue-500">
+                            </div>
+                            <div class="w-full md:w-auto">
+                                <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded transition">
+                                    添加
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- 用户列表卡片 -->
+                    <div class="glass-panel rounded-xl p-6 overflow-hidden">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4 flex justify-between items-center">
+                            <span><i class="fas fa-users-cog text-blue-600 mr-2"></i>现有账号列表</span>
+                            <span class="text-xs font-normal text-gray-400 bg-gray-100 px-2 py-1 rounded">实时同步中 <i class="fas fa-wifi text-green-500 ml-1"></i></span>
+                        </h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left text-gray-500">
+                                <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                                    <tr>
+                                        <th scope="col" class="px-6 py-3">用户 ID</th>
+                                        <th scope="col" class="px-6 py-3">身份</th>
+                                        <th scope="col" class="px-6 py-3">密码</th>
+                                        <th scope="col" class="px-6 py-3 text-right">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="user-list-body">
+                                    <!-- JS 动态填充 -->
+                                    <tr><td colspan="4" class="text-center py-4">正在加载数据...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右侧：系统日志 -->
+                <div class="glass-panel rounded-xl p-6 lg:h-[calc(100vh-8rem)] overflow-hidden flex flex-col">
+                    <div class="flex justify-between items-center mb-4 pb-2 border-b">
+                        <h3 class="text-lg font-bold text-gray-800">
+                            <i class="fas fa-history text-purple-600 mr-2"></i>系统日志
+                        </h3>
+                        <button id="btn-clear-logs" class="text-xs text-red-500 hover:text-red-700 underline">清空日志</button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto pr-2" id="log-container">
+                        <!-- JS 动态填充日志 -->
+                        <div class="text-center text-gray-400 mt-10">加载中...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 老师 (Teacher) 空白测试界面 -->
+        <div id="teacher-view" class="w-full max-w-5xl hidden text-center">
+            <div class="bg-white rounded-2xl shadow-xl p-12 border-dashed border-4 border-gray-200">
+                <div class="mb-6">
+                    <i class="fas fa-folder-open text-6xl text-gray-300"></i>
+                </div>
+                <h2 class="text-3xl font-bold text-gray-700 mb-2">欢迎进入资料系统</h2>
+                <p class="text-gray-500 text-lg mb-8">这里是老师专属的资料查看区域</p>
+                <div class="inline-block bg-yellow-50 text-yellow-800 px-6 py-3 rounded-lg border border-yellow-200">
+                    <i class="fas fa-tools mr-2"></i>
+                    此页面目前为测试阶段（空白），等待后续功能开发。
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="bg-slate-800 text-slate-400 text-center p-4 text-xs">
+        <p>&copy; 2025 iSchool v2.0 | Powered by Firebase</p>
+    </footer>
+
+    <!-- Firebase Logic -->
+    <script type="module">
+        // 1. 引入 Firebase 模块
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, addDoc, deleteDoc, onSnapshot, query, orderBy, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+
+        // 2. 配置 Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyBZPY533p6K7md9qzlNBGheYRouvonr1F0",
+            authDomain: "ischool-613c2.firebaseapp.com",
+            projectId: "ischool-613c2",
+            storageBucket: "ischool-613c2.firebasestorage.app",
+            messagingSenderId: "134866756486",
+            appId: "1:134866756486:web:d55e797b112e3465b74207",
+            measurementId: "G-6GC4G3Q8W8"
+        };
+
+        // 初始化
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // 定义 Firestore 存储路径 (按照规范)
+        // 我们使用 'ischool-v1' 作为应用ID，数据存储在 public/data 下
+        const APP_ID_PATH = 'ischool-v1'; 
+        const USERS_COLLECTION = collection(db, 'artifacts', APP_ID_PATH, 'public', 'data', 'users');
+        const LOGS_COLLECTION = collection(db, 'artifacts', APP_ID_PATH, 'public', 'data', 'logs');
+
+        // --- 状态管理 ---
+        let localUsers = []; // 本地缓存用户列表
+        let localLogs = [];  // 本地缓存日志列表
+        let currentUser = null;
+
+        // --- 初始化逻辑 ---
+        async function initApp() {
+            try {
+                // 1. 匿名登录 Firebase (为了获得读写权限)
+                await signInAnonymously(auth);
+                console.log("Firebase Connected (Anonymous)");
+
+                // 2. 设置监听器 (Real-time Listener)
+                setupListeners();
+
+                // 3. 移除加载遮罩，显示登录页
+                document.getElementById('global-loading').classList.add('hidden');
+                renderView('login');
+
+            } catch (error) {
+                console.error("Firebase Init Error:", error);
+                alert("无法连接到云端服务器，请检查网络或控制台日志。");
+            }
+        }
+
+        function setupListeners() {
+            // 监听用户列表变化
+            onSnapshot(USERS_COLLECTION, (snapshot) => {
+                localUsers = [];
+                snapshot.forEach((doc) => {
+                    localUsers.push(doc.data());
+                });
+                
+                // 如果数据库是空的，自动创建默认 admin
+                if (localUsers.length === 0) {
+                    createDefaultAdmin();
+                }
+
+                // 如果当前是 admin 视图，刷新列表
+                if (currentUser && currentUser.role === 'admin') {
+                    renderUserList();
+                }
+            });
+
+            // 监听日志变化 (按照时间倒序在客户端排序，因为 Firestore 简单模式不支持复杂查询)
+            onSnapshot(LOGS_COLLECTION, (snapshot) => {
+                localLogs = [];
+                snapshot.forEach((doc) => {
+                    // 将 doc.id 存入，方便删除
+                    localLogs.push({ ...doc.data(), docId: doc.id });
+                });
+                
+                // 客户端排序：时间新的在前
+                localLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                // 如果当前是 admin 视图，刷新日志
+                if (currentUser && currentUser.role === 'admin') {
+                    renderLogList();
+                }
+            });
+        }
+
+        async function createDefaultAdmin() {
+            console.log("Creating default admin...");
+            const adminData = { id: 'admin', pwd: '123456', role: 'admin' };
+            // 使用 ID 作为文档名，方便查找和去重
+            await setDoc(doc(USERS_COLLECTION, 'admin'), adminData);
+        }
+
+        // --- 业务逻辑 (暴露给全局 window 对象) ---
+
+        // 登录处理
+        window.handleLogin = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btn-login-submit');
+            const originalBtnText = btn.innerHTML;
+            btn.innerHTML = '<div class="loader mr-2"></div> 验证中...';
+            btn.disabled = true;
+
+            const idInput = document.getElementById('login-id').value.trim();
+            const pwdInput = document.getElementById('login-pwd').value.trim();
+            const errorMsg = document.getElementById('login-error');
+
+            // 在本地缓存的数据中查找匹配项 (因为 onSnapshot 已经保证了数据是最新的)
+            const user = localUsers.find(u => u.id === idInput && u.pwd === pwdInput);
+
+            if (user) {
+                currentUser = user;
+                errorMsg.classList.add('hidden');
+                await addLog(user.id, '登录系统');
+                
+                // 清空输入框
+                document.getElementById('login-id').value = '';
+                document.getElementById('login-pwd').value = '';
+
+                if (user.role === 'admin') {
+                    renderView('admin');
+                    renderUserList(); // 确保列表渲染
+                    renderLogList();
+                } else {
+                    renderView('teacher');
+                }
+                updateNavbar();
+            } else {
+                errorMsg.classList.remove('hidden');
+            }
+
+            btn.innerHTML = originalBtnText;
+            btn.disabled = false;
+        };
+
+        // 登出
+        window.logout = async () => {
+            if (currentUser) {
+                await addLog(currentUser.id, '登出系统');
+                currentUser = null;
+                renderView('login');
+            }
+        };
+
+        // 添加用户 (Admin)
+        window.handleAddUser = async (e) => {
+            e.preventDefault();
+            const newId = document.getElementById('new-user-id').value.trim();
+            const newPwd = document.getElementById('new-user-pwd').value.trim();
+
+            if (!newId || !newPwd) return;
+            
+            // 检查是否存在
+            if (localUsers.some(u => u.id === newId)) {
+                alert('该用户 ID 已存在！');
+                return;
+            }
+
+            try {
+                // 写入 Firestore
+                await setDoc(doc(USERS_COLLECTION, newId), {
+                    id: newId,
+                    pwd: newPwd,
+                    role: 'teacher'
+                });
+
+                await addLog(currentUser.id, `创建用户: ${newId}`);
+                
+                document.getElementById('new-user-id').value = '';
+                document.getElementById('new-user-pwd').value = '';
+                alert(`用户 ${newId} 创建成功！`);
+            } catch (err) {
+                console.error(err);
+                alert("创建失败: " + err.message);
+            }
+        };
+
+        // 删除用户 (Admin)
+        window.deleteUser = async (userId) => {
+            if (userId === 'admin') {
+                alert('无法删除超级管理员账号。');
+                return;
+            }
+            
+            if(confirm(`确定要删除用户 ${userId} 吗？此操作会同步到云端。`)) {
+                try {
+                    await deleteDoc(doc(USERS_COLLECTION, userId));
+                    await addLog(currentUser.id, `删除用户: ${userId}`);
+                } catch (err) {
+                    console.error(err);
+                    alert("删除失败");
+                }
+            }
+        };
+
+        // 清空日志
+        window.clearLogs = async () => {
+            if(!confirm('确定要清空所有历史日志吗？此操作不可恢复。')) return;
+
+            try {
+                // Firestore 没有一次性删除集合的 API，需要批量删除文档
+                // 获取当前所有日志快照 (limit to 500 for batch size safety, though loop is safer)
+                const snapshot = await getDocs(LOGS_COLLECTION);
+                const batch = writeBatch(db);
+                
+                snapshot.docs.forEach((doc) => {
+                    batch.delete(doc.ref);
+                });
+
+                await batch.commit();
+                // 记录一条“清空日志”的操作（可选）
+                // await addLog(currentUser.id, '清空了所有日志'); 
+            } catch (err) {
+                console.error("Clear logs failed:", err);
+                alert("清空失败，可能日志过多，请稍后再试。");
+            }
+        };
+
+        // 记录日志到 Firestore
+        async function addLog(userId, action) {
+            try {
+                await addDoc(LOGS_COLLECTION, {
+                    user: userId,
+                    action: action,
+                    timestamp: new Date().toISOString(), // ISO 格式方便排序
+                    displayTime: new Date().toLocaleString()
+                });
+            } catch (err) {
+                console.error("Logging failed", err);
+            }
+        }
+
+        // --- 视图渲染辅助函数 ---
+
+        function renderView(viewName) {
+            document.getElementById('login-view').classList.add('hidden');
+            document.getElementById('admin-view').classList.add('hidden');
+            document.getElementById('teacher-view').classList.add('hidden');
+            document.getElementById('navbar').classList.add('hidden');
+
+            if (viewName === 'login') {
+                document.getElementById('login-view').classList.remove('hidden');
+            } else {
+                document.getElementById('navbar').classList.remove('hidden');
+                document.getElementById('navbar').classList.add('block');
+                
+                if (viewName === 'admin') {
+                    document.getElementById('admin-view').classList.remove('hidden');
+                } else if (viewName === 'teacher') {
+                    document.getElementById('teacher-view').classList.remove('hidden');
+                }
+            }
+        }
+
+        function updateNavbar() {
+            const infoSpan = document.getElementById('nav-user-info');
+            if (currentUser) {
+                const roleName = currentUser.role === 'admin' ? '管理员' : '老师';
+                infoSpan.innerHTML = `当前用户: <span class="font-bold text-white">${currentUser.id}</span> (${roleName})`;
+            }
+        }
+
+        function renderUserList() {
+            const tbody = document.getElementById('user-list-body');
+            tbody.innerHTML = '';
+            
+            localUsers.forEach(user => {
+                const tr = document.createElement('tr');
+                tr.className = 'bg-white border-b hover:bg-gray-50 transition';
+                
+                const isAdmin = user.role === 'admin';
+                
+                tr.innerHTML = `
+                    <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
+                        <i class="fas ${isAdmin ? 'fa-user-shield text-purple-600' : 'fa-user-graduate text-blue-500'} mr-2"></i>
+                        ${user.id}
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="${isAdmin ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'} text-xs font-medium mr-2 px-2.5 py-0.5 rounded">
+                            ${isAdmin ? '管理员' : '教师'}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 font-mono text-gray-400">
+                        ${isAdmin ? '******' : user.pwd}
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        ${!isAdmin ? `
+                        <button onclick="deleteUser('${user.id}')" class="font-medium text-red-600 hover:underline hover:text-red-800 transition">删除</button>
+                        ` : '<span class="text-gray-300 text-xs">不可操作</span>'}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderLogList() {
+            const logContainer = document.getElementById('log-container');
+            logContainer.innerHTML = '';
+
+            if (localLogs.length === 0) {
+                logContainer.innerHTML = '<div class="text-center text-gray-400 mt-10">暂无日志记录</div>';
+            } else {
+                localLogs.forEach(log => {
+                    const item = document.createElement('div');
+                    item.className = 'mb-3 pb-3 border-b border-gray-100 last:border-0 animate-fade-in';
+                    
+                    let iconColor = 'text-gray-400';
+                    if (log.action.includes('登录')) iconColor = 'text-green-500';
+                    if (log.action.includes('登出')) iconColor = 'text-orange-500';
+                    if (log.action.includes('创建') || log.action.includes('删除')) iconColor = 'text-blue-500';
+
+                    item.innerHTML = `
+                        <div class="flex justify-between items-start">
+                            <div class="text-sm text-gray-800 font-medium">
+                                <i class="fas fa-circle text-[8px] ${iconColor} mr-2 align-middle"></i>
+                                ${log.user}
+                            </div>
+                            <div class="text-xs text-gray-400">${log.displayTime}</div>
+                        </div>
+                        <div class="text-xs text-gray-500 ml-5 mt-1">
+                            ${log.action}
+                        </div>
+                    `;
+                    logContainer.appendChild(item);
+                });
+            }
+        }
+
+        // --- 事件绑定 ---
+        // 因为 module 作用域问题，我们将事件绑定到 DOM 元素上，或者在 window 上暴露函数
+        // 上面已经通过 window.func = ... 暴露了，HTML 中的 onclick 可以正常工作
+        
+        // 绑定 Form 提交事件 (因为 HTML onsubmit 在 module 下访问不到 window.func 除非显式定义)
+        document.getElementById('form-login').onsubmit = window.handleLogin;
+        document.getElementById('form-add-user').onsubmit = window.handleAddUser;
+        document.getElementById('btn-logout').onclick = window.logout;
+        document.getElementById('btn-clear-logs').onclick = window.clearLogs;
+
+        // 启动
+        initApp();
+
+    </script>
+</body>
+</html>
