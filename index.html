@@ -29,10 +29,19 @@
         .tag-remove { margin-left: 0.25rem; cursor: pointer; color: #3b82f6; }
         .custom-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: #2563eb; }
 
+        /* 点名按钮样式 */
+        .att-btn { padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: bold; border: 1px solid #e5e7eb; transition: all 0.2s; }
+        .att-btn:hover { transform: scale(1.05); }
+        .att-btn.selected { border-color: transparent; color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .att-present.selected { background-color: #22c55e; }
+        .att-absent.selected { background-color: #ef4444; }
+        .att-late.selected { background-color: #f59e0b; }
+        .att-excused.selected { background-color: #3b82f6; }
+
         /* === 打印与预览通用样式 (Report Styles) === */
         .report-container {
             width: 100%;
-            background: white; /* 确保预览时也是白底 */
+            background: white;
             color: black;
             font-family: 'Times New Roman', serif;
             box-sizing: border-box;
@@ -66,7 +75,7 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 11px;
-            table-layout: auto; /* 自适应宽度 */
+            table-layout: auto;
         }
         .report-table th, .report-table td {
             border: 1px solid black;
@@ -74,40 +83,27 @@
             text-align: center;
             height: 20px;
             overflow: hidden;
-            white-space: nowrap; /* 关键：防止内容换行 */
+            white-space: nowrap;
             vertical-align: middle;
         }
 
-        /* --- 列宽策略 (核心修改) --- */
-        
-        /* 1. 极窄列 (序号, 性别, 保险) */
-        .col-fit {
-            width: 1%; /* 强制收缩 */
-            white-space: nowrap;
-        }
+        /* --- 列宽策略 --- */
+        .col-fit { width: 1%; white-space: nowrap; }
+        .col-name-ch { width: 1%; white-space: nowrap; text-align: center !important; }
+        .col-name-en { width: 1%; white-space: nowrap; text-align: center !important; }
+        .col-std-id { width: 1%; white-space: nowrap; }
+        /* 日期列 (紧凑) */
+        .col-date { width: 35px; font-size: 10px; }
 
-        /* 2. 姓名列 (修改为紧凑模式) */
-        .col-name-ch { 
-            width: 1%; /* 强制收缩到文字宽度 */
-            white-space: nowrap;
-            text-align: center !important; 
-        }
-        .col-name-en { 
-            width: 1%; /* 强制收缩到最长英文名的宽度 */
-            white-space: nowrap;
-            text-align: center !important; 
-        }
-
-        /* 3. 学号列 (稍微给一点余地) */
-        .col-std-id { 
-            width: 1%;
-            white-space: nowrap;
-        }
-
-        /* 4. 记录列 (自动扩展) */
-        /* 不设置宽度，让它们平分剩余的所有空间 */
-        .col-record {
-            /* 移除之前的 width: 30px 限制 */
+        /* 周末列样式：字体竖排，灰色背景，更紧凑 */
+        .cell-weekend {
+            background-color: #f3f4f6 !important; /* 浅灰背景，打印可见 */
+            color: #9ca3af;
+            font-size: 9px;
+            writing-mode: vertical-rl; /* 竖排文字 */
+            text-orientation: upright;
+            letter-spacing: 2px;
+            padding: 0 !important;
         }
 
         .report-footer {
@@ -119,21 +115,9 @@
 
         /* === 打印专用设置 (@media print) === */
         @media print {
-            @page { 
-                size: A4; 
-                margin: 5mm; 
-            } 
-            
-            /* 强制全白背景 */
-            html, body {
-                background-color: #ffffff !important;
-                background-image: none !important;
-                margin: 0;
-                padding: 0;
-            }
-
+            @page { size: A4; margin: 5mm; } 
+            html, body { background-color: #ffffff !important; background-image: none !important; margin: 0; padding: 0; }
             body * { visibility: hidden; }
-            
             #print-area { 
                 visibility: visible; 
                 display: block !important;
@@ -143,12 +127,10 @@
                 width: 100%; 
                 margin: 0;
                 padding: 0;
-                background-color: white !important; /* 再次确保区域白底 */
+                background-color: white !important; 
             }
             #print-area * { visibility: visible; }
             .no-print { display: none !important; }
-            
-            /* 强制打印背景色(虽然我们要白色，但这个属性能确保 border 黑色清晰) */
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
 
@@ -307,6 +289,39 @@
                 </div>
             </div>
         </div>
+
+        <!-- 6. 班级点名 -->
+        <div id="view-attendance" class="w-full hidden h-full flex-col animate-fade-in">
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex items-center gap-4"><button onclick="APP.router.navigate('dashboard')" class="text-gray-500 hover:text-blue-600 font-bold"><i class="fas fa-arrow-left"></i> 返回</button><h2 class="text-2xl font-bold text-gray-800">班级点名</h2></div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 h-full min-h-[600px]">
+                <div class="glass-panel rounded-xl p-0 flex flex-col h-full overflow-hidden"><div class="p-4 bg-gray-50 border-b"><h3 class="font-bold text-gray-700">选择班级</h3></div><div id="att-class-list" class="flex-1 overflow-y-auto p-2 space-y-1"></div></div>
+                <div class="lg:col-span-3 glass-panel rounded-xl p-0 flex flex-col h-full overflow-hidden">
+                    <div class="p-6 border-b bg-white flex justify-between items-end">
+                        <div>
+                            <h3 id="att-class-title" class="text-xl font-bold text-blue-800">请选择班级</h3>
+                            <div class="flex items-center gap-3 mt-2">
+                                <input type="date" id="att-date-picker" class="p-1 border rounded text-sm font-bold text-gray-600">
+                                <span id="att-summary" class="text-xs text-gray-500 font-mono"></span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="btn-print-att" onclick="APP.print.openAttendancePrintPreview()" class="hidden bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded-lg shadow font-bold flex items-center gap-2"><i class="fas fa-print"></i> 打印</button>
+                            <button id="btn-save-attendance" onclick="APP.attendance.save()" class="hidden bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg shadow font-bold flex items-center gap-2"><i class="fas fa-save"></i> 保存记录</button>
+                        </div>
+                    </div>
+                    <div class="flex-1 overflow-auto bg-gray-50/50">
+                        <table class="w-full text-sm text-left text-gray-600">
+                            <thead class="text-xs text-gray-500 uppercase bg-gray-100 sticky top-0 shadow-sm">
+                                <tr><th class="px-6 py-3 w-16">序号</th><th class="px-6 py-3">学生姓名</th><th class="px-6 py-3 text-center">状态</th></tr>
+                            </thead>
+                            <tbody id="att-student-list" class="divide-y divide-gray-200"><tr><td colspan="3" class="text-center py-20 text-gray-400">请选择班级和日期</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
     </main>
 
     <!-- 模态框：打印预览 -->
@@ -415,7 +430,7 @@
         import { getFirestore, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
         const CONFIG = { appPath: 'ischool-v1', registry: 'schools_registry', firebase: { apiKey: "AIzaSyBZPY533p6K7md9qzlNBGheYRouvonr1F0", authDomain: "ischool-613c2.firebaseapp.com", projectId: "ischool-613c2", storageBucket: "ischool-613c2.firebasestorage.app", messagingSenderId: "134866756486", appId: "1:134866756486:web:d55e797b112e3465b74207" } };
-        const STATE = { app: null, auth: null, db: null, user: null, schoolCode: null, schoolName: null, isGodMode: false, isSystemAdmin: false, maintenance: { active: false, msg: "", start: "", end: "" }, data: { users: [], classes: [], students: [], logs: [], allSchools: [] }, config: { races: ["华族", "巫族", "印族", "其他"], religions: ["佛教", "道教", "基督教", "天主教", "回教", "兴都教", "无", "其他"] }, refs: { users: null, logs: null, classes: null, students: null, options: null }, selectedClassId: null, selectedStudentIds: new Set(), unsubscribers: [], timers: { idle: null, input: null } };
+        const STATE = { app: null, auth: null, db: null, user: null, schoolCode: null, schoolName: null, isGodMode: false, isSystemAdmin: false, maintenance: { active: false, msg: "", start: "", end: "" }, data: { users: [], classes: [], students: [], logs: [], allSchools: [] }, config: { races: ["华族", "巫族", "印族", "其他"], religions: ["佛教", "道教", "基督教", "天主教", "回教", "兴都教", "无", "其他"] }, refs: { users: null, logs: null, classes: null, students: null, options: null }, selectedClassId: null, selectedStudentIds: new Set(), attClassId: null, attDate: new Date().toISOString().split('T')[0], attData: {}, unsubscribers: [], timers: { idle: null, input: null } };
 
         const APP = {
             init: async () => {
@@ -440,13 +455,13 @@
                     STATE.refs.students = collection(STATE.db, `${root}/students`);
                     STATE.refs.options = doc(STATE.db, `${root}/settings/options`);
                     STATE.unsubscribers.push(onSnapshot(STATE.refs.users, (snap) => { STATE.data.users = []; snap.forEach(d => { let u=d.data(); if(!u.permissions) u.permissions=['student_data']; STATE.data.users.push(u); }); if(STATE.user && !STATE.isGodMode && type !== 'system') { const me = STATE.data.users.find(u => u.id === STATE.user.id); if(me) { STATE.user = me; APP.ui.updateHeader(); } } if(APP.router.current === 'admin') APP.ui.renderUserList(); }));
-                    STATE.unsubscribers.push(onSnapshot(STATE.refs.classes, (snap) => { STATE.data.classes = []; snap.forEach(d => STATE.data.classes.push({...d.data(), id:d.id})); STATE.data.classes.sort((a,b) => String(a.year).localeCompare(String(b.year)) || String(a.name).localeCompare(String(b.name))); if(APP.router.current === 'student-data') APP.ui.renderStudentView(); }));
-                    STATE.unsubscribers.push(onSnapshot(STATE.refs.students, (snap) => { STATE.data.students = []; snap.forEach(d => STATE.data.students.push({...d.data(), id:d.id})); if(STATE.selectedClassId && APP.router.current === 'student-data') APP.ui.renderStudentList(); }));
+                    STATE.unsubscribers.push(onSnapshot(STATE.refs.classes, (snap) => { STATE.data.classes = []; snap.forEach(d => STATE.data.classes.push({...d.data(), id:d.id})); STATE.data.classes.sort((a,b) => String(a.year).localeCompare(String(b.year)) || String(a.name).localeCompare(String(b.name))); if(APP.router.current === 'student-data') APP.ui.renderStudentView(); if(APP.router.current === 'attendance') APP.ui.renderAttendanceView(); }));
+                    STATE.unsubscribers.push(onSnapshot(STATE.refs.students, (snap) => { STATE.data.students = []; snap.forEach(d => STATE.data.students.push({...d.data(), id:d.id})); if(STATE.selectedClassId && APP.router.current === 'student-data') APP.ui.renderStudentList(); if(STATE.attClassId && APP.router.current === 'attendance') APP.ui.renderAttendanceList(); }));
                     STATE.unsubscribers.push(onSnapshot(STATE.refs.logs, (snap) => { STATE.data.logs = []; snap.forEach(d => STATE.data.logs.push({...d.data(), docId:d.id})); STATE.data.logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); if(APP.router.current === 'admin') APP.ui.renderLogs(); }));
                     STATE.unsubscribers.push(onSnapshot(STATE.refs.options, (snap) => { if(snap.exists()) STATE.config = snap.data(); if(!document.getElementById('modal-student').classList.contains('hidden')) APP.ui.populateDropdowns(); }));
                     if (type === 'system') { const regCol = collection(STATE.db, `artifacts/${CONFIG.appPath}/public/data/${CONFIG.registry}`); STATE.unsubscribers.push(onSnapshot(regCol, (snap) => { STATE.data.allSchools = []; snap.forEach(d => { if(d.id!=='SYSTEM') STATE.data.allSchools.push({...d.data(), id:d.id}); }); APP.ui.renderSystemSchoolList(); })); APP.system.loadSettingsForUI(); }
                 },
-                clearListeners: () => { STATE.unsubscribers.forEach(unsub => unsub()); STATE.unsubscribers = []; STATE.data = { users: [], classes: [], students: [], logs: [], allSchools: [] }; STATE.selectedClassId = null; STATE.selectedStudentIds.clear(); },
+                clearListeners: () => { STATE.unsubscribers.forEach(unsub => unsub()); STATE.unsubscribers = []; STATE.data = { users: [], classes: [], students: [], logs: [], allSchools: [] }; STATE.selectedClassId = null; STATE.selectedStudentIds.clear(); STATE.attClassId = null; STATE.attData = {}; },
                 log: async (action) => { if(STATE.user) try { await addDoc(STATE.refs.logs, {user: STATE.user.id, action, timestamp: new Date().toISOString(), displayTime: new Date().toLocaleString()}); } catch(e){} },
                 clearLogs: async () => { if(confirm("清空日志？")) { const q = await getDocs(STATE.refs.logs); const batch = writeBatch(STATE.db); q.forEach(d => batch.delete(d.ref)); await batch.commit(); } }
             },
@@ -466,10 +481,16 @@
                 enterGodMode: (c,n) => { STATE.isGodMode=true; STATE.schoolCode=c; STATE.schoolName=n; APP.data.bindSchool(c,'school'); document.getElementById('navbar').classList.add('bg-yellow-600'); document.getElementById('btn-god-mode-exit').classList.remove('hidden'); APP.router.navigate('dashboard'); APP.ui.updateHeader(); },
                 exitGodMode: () => { STATE.isGodMode=false; STATE.schoolCode='SYSTEM'; STATE.schoolName='系统总控'; APP.data.bindSchool('SYSTEM','system'); document.getElementById('navbar').classList.remove('bg-yellow-600'); document.getElementById('btn-god-mode-exit').classList.add('hidden'); APP.router.navigate('system-console'); APP.ui.updateHeader(); }
             },
-            router: { current: 'login', navigate: (view) => { APP.router.current = view; ['view-login', 'view-system-console', 'view-dashboard', 'view-admin', 'view-student-data'].forEach(v => document.getElementById(v).classList.add('hidden')); document.getElementById('navbar').classList.add('hidden'); if(view === 'login') document.getElementById('view-login').classList.remove('hidden'); else { document.getElementById('navbar').classList.remove('hidden'); document.getElementById(`view-${view}`).classList.remove('hidden'); if(view === 'dashboard') APP.ui.renderDashboard(); if(view === 'admin') { APP.ui.renderUserList(); APP.ui.renderLogs(); } if(view === 'student-data') APP.ui.renderStudentView(); } } },
+            router: { current: 'login', navigate: (view) => { APP.router.current = view; ['view-login', 'view-system-console', 'view-dashboard', 'view-admin', 'view-student-data', 'view-attendance'].forEach(v => document.getElementById(v).classList.add('hidden')); document.getElementById('navbar').classList.add('hidden'); if(view === 'login') document.getElementById('view-login').classList.remove('hidden'); else { document.getElementById('navbar').classList.remove('hidden'); document.getElementById(`view-${view}`).classList.remove('hidden'); if(view === 'dashboard') APP.ui.renderDashboard(); if(view === 'admin') { APP.ui.renderUserList(); APP.ui.renderLogs(); } if(view === 'student-data') APP.ui.renderStudentView(); if(view === 'attendance') APP.ui.renderAttendanceView(); } } },
             ui: {
                 updateHeader: () => { if(STATE.user) { document.getElementById('nav-user-id').innerText = STATE.user.id + (STATE.isGodMode?'(上帝)':''); document.getElementById('nav-school-name').innerText = STATE.schoolName; } },
-                renderDashboard: () => { const c = document.getElementById('dashboard-card-container'); c.innerHTML = ''; document.getElementById('dashboard-school-name').innerText = STATE.schoolName; const perms = STATE.isGodMode ? ['student_data','account_manage','perm_manage','data_config'] : (STATE.user.permissions || []); if(perms.includes('student_data')) c.innerHTML += `<div onclick="APP.router.navigate('student-data')" class="dashboard-card bg-white rounded-xl p-8 shadow-sm cursor-pointer border border-gray-100 flex flex-col items-center text-center group"><div class="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6 group-hover:bg-blue-100 transition"><i class="fas fa-user-graduate text-3xl text-blue-600"></i></div><h3 class="text-xl font-bold text-gray-800 mb-2">学生资料库</h3><p class="text-sm text-gray-500">管理本校学生档案信息</p></div>`; if(perms.includes('account_manage') || perms.includes('perm_manage')) c.innerHTML += `<div onclick="APP.router.navigate('admin')" class="dashboard-card bg-white rounded-xl p-8 shadow-sm cursor-pointer border border-gray-100 flex flex-col items-center text-center group"><div class="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mb-6 group-hover:bg-purple-100 transition"><i class="fas fa-cogs text-3xl text-purple-600"></i></div><h3 class="text-xl font-bold text-gray-800 mb-2">本校后台管理</h3><p class="text-sm text-gray-500">账号权限与系统日志</p></div>`; },
+                renderDashboard: () => { 
+                    const c = document.getElementById('dashboard-card-container'); c.innerHTML = ''; document.getElementById('dashboard-school-name').innerText = STATE.schoolName; 
+                    const perms = STATE.isGodMode ? ['student_data','account_manage','perm_manage','data_config','attendance'] : (STATE.user.permissions || []); 
+                    if(perms.includes('student_data')) c.innerHTML += `<div onclick="APP.router.navigate('student-data')" class="dashboard-card bg-white rounded-xl p-8 shadow-sm cursor-pointer border border-gray-100 flex flex-col items-center text-center group"><div class="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6 group-hover:bg-blue-100 transition"><i class="fas fa-user-graduate text-3xl text-blue-600"></i></div><h3 class="text-xl font-bold text-gray-800 mb-2">学生资料库</h3><p class="text-sm text-gray-500">管理本校学生档案信息</p></div>`; 
+                    if(perms.includes('student_data')) c.innerHTML += `<div onclick="APP.router.navigate('attendance')" class="dashboard-card bg-white rounded-xl p-8 shadow-sm cursor-pointer border border-gray-100 flex flex-col items-center text-center group"><div class="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-6 group-hover:bg-green-100 transition"><i class="fas fa-clipboard-check text-3xl text-green-600"></i></div><h3 class="text-xl font-bold text-gray-800 mb-2">班级点名</h3><p class="text-sm text-gray-500">每日学生出勤记录</p></div>`;
+                    if(perms.includes('account_manage') || perms.includes('perm_manage')) c.innerHTML += `<div onclick="APP.router.navigate('admin')" class="dashboard-card bg-white rounded-xl p-8 shadow-sm cursor-pointer border border-gray-100 flex flex-col items-center text-center group"><div class="w-20 h-20 bg-purple-50 rounded-full flex items-center justify-center mb-6 group-hover:bg-purple-100 transition"><i class="fas fa-cogs text-3xl text-purple-600"></i></div><h3 class="text-xl font-bold text-gray-800 mb-2">本校后台管理</h3><p class="text-sm text-gray-500">账号权限与系统日志</p></div>`; 
+                },
                 renderUserList: () => { const tb = document.getElementById('user-list-body'); tb.innerHTML = ''; STATE.data.users.forEach(u => { const perms = (u.permissions||[]).map(p => `<span class="text-[10px] bg-gray-100 text-gray-700 px-1 rounded mr-1">${p.split('_')[0]}</span>`).join(''); let actions = (STATE.isGodMode || (STATE.user.permissions||[]).includes('account_manage')) && u.id!=='admin' ? `<button onclick="APP.actions.deleteUser('${u.id}')" class="text-red-500"><i class="fas fa-trash"></i></button>` : ''; if((STATE.isGodMode || (STATE.user.permissions||[]).includes('perm_manage')) && u.id!=='admin') actions = `<button onclick="APP.ui.openPermModal('${u.id}')" class="text-blue-500 mr-2"><i class="fas fa-cog"></i></button>` + actions; tb.innerHTML += `<tr class="border-b"><td class="px-6 py-3">${u.id}</td><td class="px-6 py-3">${perms}</td><td class="px-6 py-3">***</td><td class="px-6 py-3 text-right">${actions}</td></tr>`; }); },
                 renderLogs: () => { const c = document.getElementById('log-container'); c.innerHTML = ''; if(STATE.data.logs.length===0) c.innerHTML = '<div class="text-center text-gray-400 py-10">暂无日志</div>'; STATE.data.logs.forEach(l => { let color = 'text-gray-600', icon='circle'; if(l.action.includes('登录')) { color='text-green-600'; icon='sign-in-alt'; } else if(l.action.includes('创建') || l.action.includes('添加')) { color='text-blue-600'; icon='plus'; } else if(l.action.includes('删除')) { color='text-red-600'; icon='trash'; } c.innerHTML += `<div class="flex items-start gap-3 p-2 rounded text-xs border-b"><div class="mt-0.5 ${color}"><i class="fas fa-${icon}"></i></div><div class="flex-1"><div class="flex justify-between"><span class="font-bold">${l.user}</span><span class="text-gray-400">${l.displayTime}</span></div><p class="${color}">${l.action}</p></div></div>`; }); },
                 renderSystemSchoolList: () => { const t = document.getElementById('system-school-list'); t.innerHTML = ''; STATE.data.allSchools.forEach(s => t.innerHTML += `<tr class="border-b"><td class="px-4 py-3 font-mono text-blue-600">${s.code}</td><td class="px-4 py-3">${s.name}</td><td class="px-4 py-3 text-right"><button onclick="APP.auth.enterGodMode('${s.code}', '${s.name}')" class="bg-yellow-500 text-white px-2 py-1 rounded text-xs mr-2">进入</button><button onclick="APP.actions.deleteSchool('${s.code}')" class="text-red-500"><i class="fas fa-trash"></i></button></td></tr>`); },
@@ -498,14 +519,62 @@
                     if(ss.length===0) t.innerHTML='<tr><td colspan="5" class="text-center py-10 text-gray-400">暂无学生</td></tr>'; 
                     const updateSelectionUI = () => { const count = STATE.selectedStudentIds.size; const disp = document.getElementById('selected-count-display'); if(count > 0) { disp.innerText = `已选: ${count} 人`; disp.classList.remove('hidden'); } else { disp.classList.add('hidden'); } }; ss.forEach(s => { const isChecked = STATE.selectedStudentIds.has(s.id) ? 'checked' : ''; t.innerHTML += `<tr class="border-b hover:bg-gray-50"><td class="px-4 py-3 text-center"><input type="checkbox" class="custom-checkbox" onchange="APP.actions.toggleStudentSelection('${s.id}', this.checked)" ${isChecked}></td><td class="px-6 py-3"><div>${s.name_ch}</div><div class="text-xs text-gray-400">${s.name_en||''}</div><div class="text-xs text-gray-400">${s.std_no||'-'}</div></td><td class="px-6 py-3">${s.gender}<br><span class="text-xs text-gray-400">${s.race||'-'}</span></td><td class="px-6 py-3 font-mono">${s.ic}</td><td class="px-6 py-3 text-right"><button onclick="APP.ui.openStudentModal('${s.id}')" class="text-blue-500 mr-2"><i class="fas fa-edit"></i></button><button onclick="APP.actions.deleteStudent('${s.id}')" class="text-red-500"><i class="fas fa-trash"></i></button></td></tr>`; }); updateSelectionUI(); 
                 },
-                renderManageClassList: () => { 
-                    const t = document.getElementById('manage-class-list-body'); t.innerHTML = ''; 
+                // Attendance UI
+                renderAttendanceView: () => {
+                    const l = document.getElementById('att-class-list'); l.innerHTML='';
                     STATE.data.classes.forEach(c => {
-                        const teacher = STATE.data.users.find(u => u.id === c.formTeacherId);
-                        const teacherName = teacher ? teacher.id : '-';
-                        t.innerHTML += `<tr class="border-b"><td class="px-4 py-2">${c.year} ${c.name}</td><td class="px-4 py-2 text-gray-500 text-xs">${teacherName}</td><td class="px-4 py-2 text-right"><button onclick="APP.ui.openEditClassModal('${c.id}')" class="text-blue-500 mr-2"><i class="fas fa-edit"></i></button><button onclick="APP.actions.deleteClass('${c.id}')" class="text-red-400"><i class="fas fa-trash"></i></button></td></tr>`; 
-                    }); 
+                        const act = c.id === STATE.attClassId ? 'active bg-blue-50 text-blue-700 font-bold' : 'hover:bg-gray-50 text-gray-600';
+                        l.innerHTML += `<div onclick="APP.attendance.selectClass('${c.id}')" class="class-btn p-3 m-1 rounded cursor-pointer flex justify-between ${act}"><span>${c.year} ${c.name}</span></div>`;
+                    });
+                    document.getElementById('att-date-picker').value = STATE.attDate;
+                    if(STATE.attClassId) APP.ui.renderAttendanceList();
                 },
+                renderAttendanceList: async () => {
+                    const t = document.getElementById('att-student-list');
+                    const cls = STATE.data.classes.find(c => c.id === STATE.attClassId);
+                    if(!cls) { 
+                        t.innerHTML = '<tr><td colspan="3" class="text-center py-20 text-gray-400">请选择班级</td></tr>';
+                        return; 
+                    }
+                    
+                    document.getElementById('att-class-title').innerText = `${cls.year} - ${cls.name}`;
+                    document.getElementById('btn-save-attendance').classList.remove('hidden');
+                    document.getElementById('btn-print-att').classList.remove('hidden');
+
+                    const ss = STATE.data.students.filter(s => s.classId === STATE.attClassId);
+                    ss.sort((a, b) => (a.name_en || "").trim().toLowerCase().localeCompare((b.name_en || "").trim().toLowerCase()));
+
+                    t.innerHTML = '';
+                    if(ss.length===0) t.innerHTML='<tr><td colspan="3" class="text-center py-20 text-gray-400">暂无学生</td></tr>';
+
+                    let stats = { present: 0, absent: 0, late: 0, excused: 0 };
+                    const record = STATE.attData || {};
+
+                    ss.forEach((s, i) => {
+                        const status = record[s.id] || 'present'; // Default to present
+                        stats[status]++;
+                        
+                        t.innerHTML += `
+                        <tr class="border-b hover:bg-gray-50">
+                            <td class="px-6 py-4 font-mono text-gray-500 text-center">${i+1}</td>
+                            <td class="px-6 py-4">
+                                <div class="font-bold text-gray-700">${s.name_ch}</div>
+                                <div class="text-xs text-gray-400">${s.name_en}</div>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <div class="flex justify-center gap-2">
+                                    <button onclick="APP.attendance.setStatus('${s.id}', 'present')" class="att-btn att-present ${status==='present'?'selected':''} text-green-600 hover:bg-green-50">出席</button>
+                                    <button onclick="APP.attendance.setStatus('${s.id}', 'absent')" class="att-btn att-absent ${status==='absent'?'selected':''} text-red-600 hover:bg-red-50">缺席</button>
+                                    <button onclick="APP.attendance.setStatus('${s.id}', 'late')" class="att-btn att-late ${status==='late'?'selected':''} text-orange-600 hover:bg-orange-50">迟到</button>
+                                    <button onclick="APP.attendance.setStatus('${s.id}', 'excused')" class="att-btn att-excused ${status==='excused'?'selected':''} text-blue-600 hover:bg-blue-50">请假</button>
+                                </div>
+                            </td>
+                        </tr>`;
+                    });
+                    
+                    document.getElementById('att-summary').innerHTML = `出席: ${stats.present} | 缺席: ${stats.absent} | 迟到: ${stats.late} | 请假: ${stats.excused}`;
+                },
+
                 populateDropdowns: () => { const races = (STATE.config && STATE.config.races) ? STATE.config.races : ["华族","巫族","印族","其他"]; const religions = (STATE.config && STATE.config.religions) ? STATE.config.religions : ["佛教","道教","基督教","天主教","回教","兴都教","无"]; const rSel = document.getElementById('std-race'); rSel.innerHTML = '<option value="">-- 请选择 --</option>'; races.forEach(r => rSel.innerHTML += `<option value="${r}">${r}</option>`); const relSel = document.getElementById('std-religion'); relSel.innerHTML = '<option value="">-- 请选择 --</option>'; religions.forEach(r => relSel.innerHTML += `<option value="${r}">${r}</option>`); },
                 renderConfigList: (type) => { const c = document.getElementById(`list-${type}`); c.innerHTML = ''; const list = (STATE.config && STATE.config[type]) ? STATE.config[type] : []; list.forEach(item => { c.innerHTML += `<div class="tag-item"><span>${item}</span><i onclick="APP.actions.removeConfigOption('${type}', '${item}')" class="fas fa-times tag-remove"></i></div>`; }); },
                 openClassModal: () => { 
@@ -519,11 +588,7 @@
                     document.getElementById('edit-class-name').value = cls.name;
                     const sel = document.getElementById('edit-class-teacher');
                     sel.innerHTML = '<option value="">-- 无 --</option>';
-                    STATE.data.users.forEach(u => {
-                        if(u.role !== 'system_admin') {
-                            sel.innerHTML += `<option value="${u.id}">${u.id}</option>`;
-                        }
-                    });
+                    STATE.data.users.forEach(u => { if(u.role !== 'system_admin') { sel.innerHTML += `<option value="${u.id}">${u.id}</option>`; } });
                     sel.value = cls.formTeacherId || "";
                     document.getElementById('modal-edit-class').classList.remove('hidden');
                 },
@@ -638,6 +703,230 @@
                     document.getElementById('print-area').innerHTML = printHtml;
                     document.getElementById('print-preview-container').innerHTML = printHtml;
                     document.getElementById('modal-print').classList.remove('hidden');
+                },
+
+                openAttendancePrintPreview: async () => {
+                    if(!STATE.attClassId) return alert("请先选择班级");
+                    if(!STATE.attDate) return alert("请选择日期");
+
+                    const cls = STATE.data.classes.find(c => c.id === STATE.attClassId);
+                    const students = STATE.data.students.filter(s => s.classId === STATE.attClassId);
+                    students.sort((a, b) => (a.name_en || "").trim().toLowerCase().localeCompare((b.name_en || "").trim().toLowerCase()));
+
+                    // Calculate the 14 dates (ending with selected date)
+                    const dates = [];
+                    const selectedDate = new Date(STATE.attDate);
+                    for (let i = 13; i >= 0; i--) { // 13 days before + today = 14 days
+                        const d = new Date(selectedDate);
+                        d.setDate(d.getDate() - i);
+                        dates.push(d.toISOString().split('T')[0]);
+                    }
+
+                    // Fetch attendance data for these 14 dates
+                    const fetchOne = async (dateStr) => {
+                        const docId = `${STATE.attClassId}_${dateStr}`;
+                        const ref = doc(STATE.db, `artifacts/${CONFIG.appPath}/schools/${STATE.schoolCode}/attendance/${docId}`);
+                        try {
+                            const snap = await getDoc(ref);
+                            if (snap.exists()) return { date: dateStr, records: snap.data().records || {} };
+                        } catch(e) {}
+                        return { date: dateStr, records: {} };
+                    };
+
+                    const results = await Promise.all(dates.map(d => fetchOne(d)));
+                    const dateRecords = {};
+                    results.forEach(r => dateRecords[r.date] = r.records);
+
+                    // Header construction
+                    let dateHeaderHtml = '';
+                    // SATURDAY letters: S-A-T-U-R-D-A-Y (8 chars)
+                    // SUNDAY letters: S-U-N-D-A-Y (6 chars)
+                    const satLetters = ['S','A','T','U','R','D','A','Y'];
+                    const sunLetters = ['S','U','N','D','A','Y'];
+
+                    dates.forEach(d => {
+                        const parts = d.split('-');
+                        dateHeaderHtml += `<th class="col-date">${parts[2]}/${parts[1]}</th>`;
+                    });
+
+                    // Build Rows
+                    let rowsHtml = '';
+                    for(let i=0; i<40; i++) {
+                        const s = students[i];
+                        if(s) {
+                            let attCells = '';
+                            dates.forEach(d => {
+                                const dateObj = new Date(d);
+                                const dayIdx = dateObj.getDay(); // 0=Sun, 6=Sat
+                                const isSat = dayIdx === 6;
+                                const isSun = dayIdx === 0;
+
+                                if (isSat) {
+                                    // Loop Saturday letters
+                                    const char = satLetters[i % satLetters.length];
+                                    attCells += `<td class="cell-weekend" style="font-size:10px; font-weight:bold;">${char}</td>`;
+                                } else if (isSun) {
+                                    // Loop Sunday letters
+                                    const char = sunLetters[i % sunLetters.length];
+                                    attCells += `<td class="cell-weekend" style="font-size:10px; font-weight:bold;">${char}</td>`;
+                                } else {
+                                    // Weekday Logic
+                                    const status = dateRecords[d][s.id]; // May be undefined if no record
+                                    let symbol = '/'; // Default present
+                                    
+                                    if (status === 'absent') symbol = 'O';
+                                    else if (status === 'late') symbol = 'L';
+                                    else if (status === 'excused') symbol = 'E';
+                                    // If status is undefined or 'present', symbol remains '/'
+                                    
+                                    attCells += `<td>${symbol}</td>`;
+                                }
+                            });
+
+                            rowsHtml += `
+                            <tr>
+                                <td>${i+1}</td>
+                                <td class="col-name-ch">${s.name_ch}</td>
+                                <td class="col-name-en">${s.name_en}</td>
+                                <td class="col-fit">${s.gender === '男' ? 'L' : 'P'}</td>
+                                ${attCells}
+                            </tr>`;
+                        } else {
+                            let emptyCells = '';
+                            for(let k=0; k<14; k++) {
+                                // Still render letters for empty rows on weekends?
+                                const d = dates[k];
+                                const dateObj = new Date(d);
+                                const dayIdx = dateObj.getDay();
+                                const isSat = dayIdx === 6;
+                                const isSun = dayIdx === 0;
+                                
+                                if(isSat) {
+                                     const char = satLetters[i % satLetters.length];
+                                     emptyCells += `<td class="cell-weekend" style="font-size:10px; font-weight:bold;">${char}</td>`;
+                                } else if (isSun) {
+                                     const char = sunLetters[i % sunLetters.length];
+                                     emptyCells += `<td class="cell-weekend" style="font-size:10px; font-weight:bold;">${char}</td>`;
+                                } else {
+                                     emptyCells += `<td></td>`;
+                                }
+                            }
+                            rowsHtml += `
+                            <tr>
+                                <td>${i+1}</td><td></td><td></td><td></td>
+                                ${emptyCells}
+                            </tr>`;
+                        }
+                    }
+
+                    let teacherName = "________________";
+                    if(cls.formTeacherId) {
+                        const t = STATE.data.users.find(u => u.id === cls.formTeacherId);
+                        if(t) teacherName = t.id; 
+                    }
+
+                    const printHtml = `
+                        <div class="report-header">
+                            <h2 class="report-school-name">${STATE.schoolName}</h2>
+                        </div>
+                        <div class="report-info-bar">
+                            <div style="width: 30%; text-align: left;">班级: ${cls.name}</div>
+                            <div style="width: 40%; text-align: center;">${cls.year} 年学生点名记录</div>
+                            <div style="width: 30%; text-align: right;">班主任: ${teacherName}</div>
+                        </div>
+                        <table class="report-table">
+                            <thead>
+                                <tr style="height: 30px;">
+                                    <th class="col-fit">序号</th>
+                                    <th class="col-name-ch">姓名</th>
+                                    <th class="col-name-en">NAME</th>
+                                    <th class="col-fit">性别</th>
+                                    ${dateHeaderHtml}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsHtml}
+                            </tbody>
+                        </table>
+                        <div class="report-footer" style="margin-top:10px;">
+                            / : 出席 &nbsp; O : 缺席 &nbsp; L : 迟到 &nbsp; E : 请假
+                        </div>
+                    `;
+
+                    document.getElementById('print-area').innerHTML = printHtml;
+                    document.getElementById('print-preview-container').innerHTML = printHtml;
+                    document.getElementById('modal-print').classList.remove('hidden');
+                }
+            },
+
+            // === 点名模块 ===
+            attendance: {
+                // Select Class: Trigger Fetch -> Update State -> Render View (Highlight) -> Fetch Students -> Render List
+                selectClass: async (id) => { 
+                    STATE.attClassId = id; 
+                    APP.ui.renderAttendanceView(); // Immediate visual feedback (highlight sidebar)
+                    
+                    // Fetch Data for this class and date
+                    const docId = `${STATE.attClassId}_${STATE.attDate}`;
+                    const attRef = doc(STATE.db, `artifacts/${CONFIG.appPath}/schools/${STATE.schoolCode}/attendance/${docId}`);
+                    let record = {};
+                    try {
+                        const snap = await getDoc(attRef);
+                        if (snap.exists()) record = snap.data().records || {};
+                    } catch(e) {}
+                    STATE.attData = record;
+
+                    APP.ui.renderAttendanceList();
+                },
+                
+                // Change Date: Fetch Data -> Render List
+                changeDate: async (newDate) => {
+                    STATE.attDate = newDate;
+                    if(!STATE.attClassId) return;
+
+                    const docId = `${STATE.attClassId}_${STATE.attDate}`;
+                    const attRef = doc(STATE.db, `artifacts/${CONFIG.appPath}/schools/${STATE.schoolCode}/attendance/${docId}`);
+                    let record = {};
+                    try {
+                        const snap = await getDoc(attRef);
+                        if (snap.exists()) record = snap.data().records || {};
+                    } catch(e) {}
+                    STATE.attData = record;
+                    
+                    APP.ui.renderAttendanceList();
+                },
+
+                setStatus: (sid, status) => {
+                    STATE.attData[sid] = status;
+                    APP.ui.renderAttendanceList(); // Sync render from local state
+                },
+                save: async () => {
+                    if(!STATE.attClassId) return;
+                    const date = document.getElementById('att-date-picker').value;
+                    if(!date) return alert("请选择日期");
+                    
+                    // 自动填充默认出席
+                    const students = STATE.data.students.filter(s => s.classId === STATE.attClassId);
+                    students.forEach(s => {
+                        if(!STATE.attData[s.id]) STATE.attData[s.id] = 'present';
+                    });
+
+                    const docId = `${STATE.attClassId}_${date}`;
+                    const data = {
+                        date: date,
+                        classId: STATE.attClassId,
+                        records: STATE.attData,
+                        updatedBy: STATE.user.id,
+                        updatedAt: new Date().toISOString()
+                    };
+                    
+                    try {
+                        await setDoc(doc(STATE.db, `artifacts/${CONFIG.appPath}/schools/${STATE.schoolCode}/attendance/${docId}`), data);
+                        alert("点名保存成功");
+                        APP.data.log(`点名: ${STATE.attClassId} (${date})`);
+                        // 重新渲染以显示最新状态（虽然数据已经是present了，但在UI上确认一下也好）
+                        APP.ui.renderAttendanceList(); 
+                    } catch(e) { alert("保存失败"); }
                 }
             },
 
@@ -693,6 +982,10 @@
         document.getElementById('form-edit-perms').onsubmit = APP.actions.savePerms;
         document.getElementById('form-add-class').onsubmit = APP.actions.addClass;
         document.getElementById('form-edit-class').onsubmit = APP.actions.saveEditedClass;
+        // Date Picker Change Listener
+        document.getElementById('att-date-picker').addEventListener('change', (e) => {
+            APP.attendance.changeDate(e.target.value);
+        });
         APP.init();
     </script>
 </body>
