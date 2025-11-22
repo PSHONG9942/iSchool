@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>iSchool 校园资料管理系统 (权限管理版)</title>
+    <title>iSchool 校园资料管理系统 (自动登出版)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome -->
@@ -55,6 +55,9 @@
                 <h1 class="text-xl font-bold">iSchool 云端系统</h1>
             </div>
             <div class="flex items-center gap-4">
+                <span id="auto-logout-timer" class="text-xs text-gray-500 bg-gray-900 px-2 py-1 rounded hidden md:inline-block" title="闲置自动登出倒计时">
+                    <i class="fas fa-hourglass-half mr-1"></i>监控中
+                </span>
                 <!-- 查看我的权限按钮 -->
                 <button onclick="showMyPermissions()" class="flex items-center gap-2 hover:bg-slate-700 px-3 py-1 rounded transition text-sm" title="查看我的权限">
                     <i class="fas fa-id-badge text-yellow-400"></i>
@@ -74,7 +77,8 @@
         <!-- 全局加载状态 -->
         <div id="global-loading" class="absolute inset-0 bg-gray-100 z-50 flex flex-col items-center justify-center">
             <div class="text-4xl text-blue-600 mb-4"><i class="fas fa-circle-notch fa-spin"></i></div>
-            <p class="text-gray-500">正在连接 Firebase 云端数据库...</p>
+            <p class="text-gray-500" id="loading-text">正在连接 Firebase 云端数据库...</p>
+            <p class="text-xs text-gray-400 mt-2">(如果长时间卡住，请检查网络或刷新页面)</p>
         </div>
 
         <!-- 1. 登录界面 -->
@@ -86,6 +90,9 @@
                     </div>
                     <h2 class="text-2xl font-bold text-gray-800">iSchool 登录</h2>
                     <p class="text-gray-500 text-sm mt-1">云端数据实时同步</p>
+                    <div id="connection-status" class="mt-2 text-xs text-orange-500">
+                        <i class="fas fa-circle-notch fa-spin mr-1"></i> 正在同步用户数据...
+                    </div>
                 </div>
                 
                 <form id="form-login" class="space-y-4">
@@ -107,8 +114,8 @@
                                 placeholder="••••••">
                         </div>
                     </div>
-                    <div id="login-error" class="text-red-500 text-sm text-center hidden">
-                        <i class="fas fa-exclamation-circle mr-1"></i> ID 或密码错误
+                    <div id="login-error" class="text-red-500 text-sm text-center hidden bg-red-50 p-2 rounded">
+                        <i class="fas fa-exclamation-circle mr-1"></i> <span id="login-error-msg">ID 或密码错误</span>
                     </div>
                     <button type="submit" id="btn-login-submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition shadow-md flex justify-center items-center gap-2">
                         <span>进入系统</span>
@@ -298,16 +305,87 @@
         </div>
     </div>
 
+    <!-- DEBUG CONSOLE (保留本地显示，同时会发送云端) -->
+    <div id="debug-console" class="fixed bottom-0 left-0 w-full bg-red-800 text-white p-4 text-xs font-mono z-[100] hidden overflow-y-auto max-h-48">
+        <div class="flex justify-between items-start">
+            <h4 class="font-bold text-red-200 mb-2">⚠️ 系统错误日志 (Debug Mode)</h4>
+            <button onclick="document.getElementById('debug-console').classList.add('hidden')" class="text-white bg-red-700 px-2 rounded">关闭</button>
+        </div>
+        <pre id="debug-content" class="whitespace-pre-wrap"></pre>
+    </div>
+
     <footer class="bg-slate-800 text-slate-400 text-center p-4 text-xs">
-        <p>&copy; 2025 iSchool v2.2 | 权限管理系统</p>
+        <p>&copy; 2025 iSchool v2.4 | 自动登出 & 远程日志版</p>
     </footer>
 
     <!-- Firebase Logic -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, query, orderBy, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, onSnapshot, query, orderBy, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
+        // === 全局变量定义 ===
+        let app, auth, db;
+        const APP_ID_PATH = 'ischool-v1'; 
+        let USERS_COLLECTION, LOGS_COLLECTION;
+
+        let localUsers = [];
+        let localLogs = [];
+        let currentUser = null;
+        let isDataReady = false;
+        
+        // 自动登出定时器
+        let inactivityTimer;
+        const INACTIVITY_LIMIT = 10 * 60 * 1000; // 10分钟 (毫秒)
+
+        // 权限字典
+        const PERM_DICT = {
+            'student_data': { label: '学生资料管理', icon: 'fa-user-graduate', color: 'text-blue-600' },
+            'account_manage': { label: '账号和密码管理', icon: 'fa-users-cog', color: 'text-purple-600' },
+            'perm_manage': { label: '用户权限分配', icon: 'fa-shield-alt', color: 'text-red-600' }
+        };
+
+        // === 增强版错误处理 (Remote Logging) ===
+        async function logError(msg, err) {
+            // 1. 显示在本地调试控制台
+            console.error(msg, err);
+            const debugConsole = document.getElementById('debug-console');
+            const debugContent = document.getElementById('debug-content');
+            if(debugConsole && debugContent) {
+                debugConsole.classList.remove('hidden');
+                debugContent.textContent += `[${new Date().toLocaleTimeString()}] ${msg}: ${err ? err.message : ''}\n`;
+            }
+
+            // 2. 如果有登录界面的错误提示，显示出来
+            const loginError = document.getElementById('login-error');
+            const loginErrorMsg = document.getElementById('login-error-msg');
+            if (loginError && !loginError.classList.contains('hidden')) {
+                loginErrorMsg.innerText = "系统错误: " + msg;
+            }
+
+            // 3. 【新增】尝试发送到云端日志
+            // 注意：我们在 try/catch 里，防止如果数据库挂了，导致这里无限循环
+            try {
+                if (db && LOGS_COLLECTION) {
+                    // 如果当前没登录，就记录为 anonymous 或 unknown
+                    const reporterId = currentUser ? currentUser.id : 'unknown_user';
+                    await addDoc(LOGS_COLLECTION, {
+                        user: reporterId,
+                        action: `❌ 报错: ${msg} - ${err ? err.message : 'N/A'}`,
+                        timestamp: new Date().toISOString(),
+                        displayTime: new Date().toLocaleString()
+                    });
+                }
+            } catch (remoteLogErr) {
+                console.warn("无法发送远程日志", remoteLogErr);
+            }
+        }
+
+        window.onerror = function(message, source, lineno, colno, error) {
+            logError("全局未捕获错误", error || { message: message });
+        };
+
+        // === Firebase 配置 ===
         const firebaseConfig = {
             apiKey: "AIzaSyBZPY533p6K7md9qzlNBGheYRouvonr1F0",
             authDomain: "ischool-613c2.firebaseapp.com",
@@ -318,266 +396,233 @@
             measurementId: "G-6GC4G3Q8W8"
         };
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        // === 自动登出逻辑 ===
+        function resetInactivityTimer() {
+            // 如果没有登录，不需要倒计时
+            if (!currentUser) return;
 
-        const APP_ID_PATH = 'ischool-v1'; 
-        const USERS_COLLECTION = collection(db, 'artifacts', APP_ID_PATH, 'public', 'data', 'users');
-        const LOGS_COLLECTION = collection(db, 'artifacts', APP_ID_PATH, 'public', 'data', 'logs');
+            clearTimeout(inactivityTimer);
+            inactivityTimer = setTimeout(() => {
+                if (currentUser) {
+                    alert("⚠️ 您已闲置超过 10 分钟，为了安全起见，系统将自动登出。");
+                    window.logout();
+                }
+            }, INACTIVITY_LIMIT);
+        }
 
-        let localUsers = [];
-        let localLogs = [];
-        let currentUser = null;
+        function initAutoLogout() {
+            // 监听各种用户活动
+            const events = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart'];
+            events.forEach(event => {
+                document.addEventListener(event, resetInactivityTimer);
+            });
+        }
 
-        // 权限字典：代码 -> 中文描述
-        const PERM_DICT = {
-            'student_data': { label: '学生资料管理', icon: 'fa-user-graduate', color: 'text-blue-600' },
-            'account_manage': { label: '账号和密码管理', icon: 'fa-users-cog', color: 'text-purple-600' },
-            'perm_manage': { label: '用户权限分配', icon: 'fa-shield-alt', color: 'text-red-600' }
-        };
-
+        // === 初始化 ===
         async function initApp() {
             try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                
+                USERS_COLLECTION = collection(db, 'artifacts', APP_ID_PATH, 'public', 'data', 'users');
+                LOGS_COLLECTION = collection(db, 'artifacts', APP_ID_PATH, 'public', 'data', 'logs');
+
                 await signInAnonymously(auth);
+                console.log("Firebase Connected (Anonymous)");
                 setupListeners();
+                initAutoLogout(); // 启动自动登出监听
+                
                 document.getElementById('global-loading').classList.add('hidden');
                 renderView('login');
+                
             } catch (error) {
-                console.error("Firebase Init Error:", error);
-                alert("连接失败");
+                logError("Firebase Init Error", error);
+                alert("无法连接到云端服务器，请检查网络。");
             }
         }
 
         function setupListeners() {
-            onSnapshot(USERS_COLLECTION, (snapshot) => {
-                localUsers = [];
-                snapshot.forEach((doc) => localUsers.push(doc.data()));
-                if (localUsers.length === 0) createDefaultAdmin();
-                
-                // 如果当前登录用户在数据库中被更新了（比如权限变了），实时更新本地 currentUser
-                if (currentUser) {
-                    const updatedMe = localUsers.find(u => u.id === currentUser.id);
-                    if (updatedMe) currentUser = updatedMe;
-                    if (currentUser.role === 'admin') renderUserList();
-                    updateNavbar(); // 刷新导航栏（可能名字或权限变了）
-                }
-            });
+            try {
+                onSnapshot(USERS_COLLECTION, (snapshot) => {
+                    localUsers = [];
+                    snapshot.forEach((doc) => localUsers.push(doc.data()));
+                    isDataReady = true;
+                    
+                    const statusDiv = document.getElementById('connection-status');
+                    if (statusDiv) {
+                        statusDiv.className = 'mt-2 text-xs text-green-500';
+                        statusDiv.innerHTML = `<i class="fas fa-check-circle"></i> 云端已连接`;
+                    }
 
-            onSnapshot(LOGS_COLLECTION, (snapshot) => {
-                localLogs = [];
-                snapshot.forEach((doc) => localLogs.push({ ...doc.data(), docId: doc.id }));
-                localLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                if (currentUser && currentUser.role === 'admin') renderLogList();
-            });
+                    if (localUsers.length === 0) createDefaultAdmin();
+                    
+                    if (currentUser) {
+                        // 检查当前用户是否还在数据库里（防止被删除后还在操作）
+                        const updatedMe = localUsers.find(u => u.id === currentUser.id);
+                        if (updatedMe) {
+                            currentUser = updatedMe;
+                            if (currentUser.role === 'admin') renderUserList();
+                            updateNavbar();
+                        } else {
+                            // 用户被删除了，强制登出
+                            alert("您的账号已被移除。");
+                            window.logout();
+                        }
+                    }
+                }, (error) => {
+                    logError("读取用户数据失败", error);
+                    const statusDiv = document.getElementById('connection-status');
+                    if (statusDiv) statusDiv.innerHTML = `<span class="text-red-500">连接断开: ${error.code}</span>`;
+                });
+
+                onSnapshot(LOGS_COLLECTION, (snapshot) => {
+                    localLogs = [];
+                    snapshot.forEach((doc) => localLogs.push({ ...doc.data(), docId: doc.id }));
+                    localLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    if (currentUser && currentUser.role === 'admin') renderLogList();
+                }, (error) => logError("读取日志数据失败", error));
+            } catch (e) {
+                logError("设置监听器失败", e);
+            }
         }
 
         async function createDefaultAdmin() {
-            // 默认 admin 拥有所有权限
-            await setDoc(doc(USERS_COLLECTION, 'admin'), { 
-                id: 'admin', 
-                pwd: '123456', 
-                role: 'admin',
-                permissions: ['student_data', 'account_manage', 'perm_manage'] 
-            });
+            try {
+                await setDoc(doc(USERS_COLLECTION, 'admin'), { 
+                    id: 'admin', 
+                    pwd: '123456', 
+                    role: 'admin',
+                    permissions: ['student_data', 'account_manage', 'perm_manage'] 
+                });
+            } catch (e) { logError("创建默认管理员失败", e); }
         }
 
-        // --- 业务逻辑 ---
+        // === 业务逻辑 ===
 
         window.handleLogin = async (e) => {
             e.preventDefault();
             const btn = document.getElementById('btn-login-submit');
             const originalBtnText = btn.innerHTML;
-            btn.innerHTML = '<div class="loader mr-2"></div> 验证中...';
-            btn.disabled = true;
-
-            const idInput = document.getElementById('login-id').value.trim();
-            const pwdInput = document.getElementById('login-pwd').value.trim();
             const errorMsg = document.getElementById('login-error');
+            const errorText = document.getElementById('login-error-msg');
 
-            const user = localUsers.find(u => u.id === idInput && u.pwd === pwdInput);
+            errorMsg.classList.add('hidden');
 
-            if (user) {
-                // 兼容旧数据：如果旧用户没有 permissions 字段，根据 role 补全默认值
-                if (!user.permissions) {
-                    user.permissions = user.role === 'admin' 
-                        ? ['student_data', 'account_manage', 'perm_manage']
-                        : ['student_data'];
-                }
-                
-                currentUser = user;
-                errorMsg.classList.add('hidden');
-                await addLog(user.id, '登录系统');
-                
-                document.getElementById('login-id').value = '';
-                document.getElementById('login-pwd').value = '';
+            try {
+                if (!isDataReady) throw new Error("正在连接数据库，请稍候...");
 
-                // 无论是什么角色，都去 Dashboard，由 Dashboard 决定显示什么
-                // 但为了保持你之前的习惯，Admin 还是去 Admin View
-                if (user.role === 'admin') {
-                    renderView('admin');
-                    renderUserList();
-                    renderLogList();
+                btn.innerHTML = '<div class="loader mr-2"></div> 验证中...';
+                btn.disabled = true;
+
+                const idInput = document.getElementById('login-id').value.trim();
+                const pwdInput = document.getElementById('login-pwd').value.trim();
+                const user = localUsers.find(u => u.id === idInput && u.pwd === pwdInput);
+
+                if (user) {
+                    if (!user.permissions) {
+                        user.permissions = user.role === 'admin' 
+                            ? ['student_data', 'account_manage', 'perm_manage']
+                            : ['student_data'];
+                    }
+                    
+                    currentUser = user;
+                    resetInactivityTimer(); // 登录成功，开始倒计时
+
+                    // 记录日志
+                    await addLog(user.id, '登录系统');
+                    
+                    document.getElementById('login-id').value = '';
+                    document.getElementById('login-pwd').value = '';
+
+                    if (user.role === 'admin') {
+                        renderView('admin');
+                        renderUserList();
+                        renderLogList();
+                    } else {
+                        renderView('teacher');
+                    }
+                    updateNavbar();
                 } else {
-                    renderView('teacher');
+                    errorText.innerText = "ID 或密码错误";
+                    errorMsg.classList.remove('hidden');
                 }
-                updateNavbar();
-            } else {
+            } catch (err) {
+                logError("登录流程错误", err);
+                errorText.innerText = err.message || "未知错误";
                 errorMsg.classList.remove('hidden');
+            } finally {
+                btn.innerHTML = originalBtnText;
+                btn.disabled = false;
             }
-
-            btn.innerHTML = originalBtnText;
-            btn.disabled = false;
         };
 
         window.logout = async () => {
             if (currentUser) {
-                await addLog(currentUser.id, '登出系统');
+                try { await addLog(currentUser.id, '登出系统'); } catch(e) {}
                 currentUser = null;
+                clearTimeout(inactivityTimer); // 清除定时器
                 renderView('login');
             }
         };
 
+        // 用户管理与权限逻辑 (与之前版本一致)
         window.handleAddUser = async (e) => {
             e.preventDefault();
             const newId = document.getElementById('new-user-id').value.trim();
             const newPwd = document.getElementById('new-user-pwd').value.trim();
             if (!newId || !newPwd) return;
-            if (localUsers.some(u => u.id === newId)) { alert('该用户 ID 已存在！'); return; }
+            if (localUsers.some(u => u.id === newId)) { alert('ID 已存在！'); return; }
 
             try {
-                // 新建用户默认是 Teacher，且默认只有查看学生资料的权限
                 await setDoc(doc(USERS_COLLECTION, newId), { 
-                    id: newId, 
-                    pwd: newPwd, 
-                    role: 'teacher',
-                    permissions: ['student_data'] 
+                    id: newId, pwd: newPwd, role: 'teacher', permissions: ['student_data'] 
                 });
                 await addLog(currentUser.id, `创建用户: ${newId}`);
                 document.getElementById('new-user-id').value = '';
                 document.getElementById('new-user-pwd').value = '';
                 alert(`用户 ${newId} 创建成功！`);
-            } catch (err) { console.error(err); alert("创建失败"); }
+            } catch (err) { logError("创建用户失败", err); alert("创建失败: " + err.message); }
         };
 
         window.deleteUser = async (userId) => {
-            if (userId === 'admin') { alert('无法删除超级管理员账号。'); return; }
-            if(confirm(`确定要删除用户 ${userId} 吗？`)) {
+            if (userId === 'admin') { alert('无法删除超级管理员。'); return; }
+            if(confirm(`确定要删除 ${userId} 吗？`)) {
                 try {
                     await deleteDoc(doc(USERS_COLLECTION, userId));
                     await addLog(currentUser.id, `删除用户: ${userId}`);
-                } catch (err) { console.error(err); alert("删除失败"); }
+                } catch (err) { logError("删除用户失败", err); alert("删除失败"); }
             }
         };
 
-        // --- 权限管理逻辑 (新增) ---
-
-        // 打开“修改权限”模态框 (Admin only)
         window.openPermModal = (targetUserId) => {
             const targetUser = localUsers.find(u => u.id === targetUserId);
             if (!targetUser) return;
-
             document.getElementById('edit-perm-target-id').innerText = targetUser.id;
             document.getElementById('edit-perm-target-id-hidden').value = targetUser.id;
-
-            // 获取目标用户的现有权限，如果没有则默认空数组
             const userPerms = targetUser.permissions || [];
-            
-            // 勾选对应的 checkbox
-            const checkboxes = document.querySelectorAll('#form-edit-perms input[name="perms"]');
-            checkboxes.forEach(cb => {
-                cb.checked = userPerms.includes(cb.value);
-            });
-
+            document.querySelectorAll('#form-edit-perms input[name="perms"]').forEach(cb => cb.checked = userPerms.includes(cb.value));
             document.getElementById('modal-edit-perms').classList.remove('hidden');
         };
 
-        // 保存权限修改
         document.getElementById('form-edit-perms').onsubmit = async (e) => {
             e.preventDefault();
             const targetId = document.getElementById('edit-perm-target-id-hidden').value;
-            
-            // 获取所有选中的权限
             const selectedPerms = [];
-            document.querySelectorAll('#form-edit-perms input[name="perms"]:checked').forEach(cb => {
-                selectedPerms.push(cb.value);
-            });
-
+            document.querySelectorAll('#form-edit-perms input[name="perms"]:checked').forEach(cb => selectedPerms.push(cb.value));
             try {
-                // 更新 Firestore
-                await updateDoc(doc(USERS_COLLECTION, targetId), {
-                    permissions: selectedPerms
-                });
-                
-                // 更新 Role (可选逻辑：如果拥有了 admin 级别的权限，是否自动变为 admin role？
-                // 为了简化，我们这里只更新 permissions 字段，role 字段暂时保持原样或由人工逻辑决定。
-                // 但为了让 Admin 视图生效，如果赋予了 'account_manage'，我们通常认为他是管理员)
-                // *这里我们保持简单，仅修改 permissions 数组*
-
+                await updateDoc(doc(USERS_COLLECTION, targetId), { permissions: selectedPerms });
                 await addLog(currentUser.id, `修改权限: ${targetId}`);
                 closeModal('modal-edit-perms');
                 alert('权限更新成功！');
-            } catch (err) {
-                console.error(err);
-                alert('更新失败');
-            }
+            } catch (err) { logError("更新权限失败", err); alert('更新失败'); }
         };
 
-        // --- 查看我的权限逻辑 ---
-        window.showMyPermissions = () => {
-            if (!currentUser) return;
-            document.getElementById('modal-my-id').innerText = currentUser.id;
-            
-            const listContainer = document.getElementById('modal-my-perm-list');
-            listContainer.innerHTML = '';
-
-            const perms = currentUser.permissions || [];
-            
-            if (perms.length === 0) {
-                listContainer.innerHTML = '<div class="text-gray-400 text-center py-4">暂无特殊权限</div>';
-            } else {
-                perms.forEach(permKey => {
-                    const info = PERM_DICT[permKey];
-                    if (info) {
-                        const div = document.createElement('div');
-                        div.className = 'flex items-center p-3 bg-gray-50 rounded-lg border border-gray-100';
-                        div.innerHTML = `
-                            <i class="fas ${info.icon} ${info.color} w-8 text-center text-lg"></i>
-                            <span class="font-medium text-gray-700">${info.label}</span>
-                            <i class="fas fa-check text-green-500 ml-auto"></i>
-                        `;
-                        listContainer.appendChild(div);
-                    }
-                });
-            }
-
-            document.getElementById('modal-my-perms').classList.remove('hidden');
-        };
-
-        window.closeModal = (modalId) => {
-            document.getElementById(modalId).classList.add('hidden');
-        };
-
-        // --- 通用逻辑 ---
-
-        window.navigateTo = (page) => {
-            if (page === 'dashboard') {
-                // 检查权限决定去哪里
-                if (currentUser && currentUser.role === 'admin') {
-                    renderView('admin');
-                } else {
-                    renderView('teacher');
-                }
-            } else {
-                renderView(page);
-            }
-        };
+        // === 视图渲染 ===
 
         function renderView(viewName) {
-            document.getElementById('login-view').classList.add('hidden');
-            document.getElementById('admin-view').classList.add('hidden');
-            document.getElementById('teacher-view').classList.add('hidden');
-            document.getElementById('student-data-view').classList.add('hidden');
+            const views = ['login-view', 'admin-view', 'teacher-view', 'student-data-view'];
+            views.forEach(v => document.getElementById(v).classList.add('hidden'));
             document.getElementById('navbar').classList.add('hidden');
 
             if (viewName === 'login') {
@@ -585,13 +630,13 @@
             } else {
                 document.getElementById('navbar').classList.remove('hidden');
                 document.getElementById('navbar').classList.add('block');
+                resetInactivityTimer(); // 切换视图时也重置计时
                 
                 if (viewName === 'admin') {
                     document.getElementById('admin-view').classList.remove('hidden');
                 } else if (viewName === 'teacher') {
                     document.getElementById('teacher-view').classList.remove('hidden');
                 } else if (viewName === 'student-data') {
-                    // 简单的权限检查
                     if (currentUser && (currentUser.permissions || []).includes('student_data')) {
                         document.getElementById('student-data-view').classList.remove('hidden');
                         document.getElementById('student-data-view').classList.add('flex');
@@ -603,54 +648,9 @@
             }
         }
 
-        function updateNavbar() {
-            if (currentUser) {
-                document.getElementById('nav-user-id').innerText = currentUser.id;
-            }
-        }
-
-        function renderUserList() {
-            const tbody = document.getElementById('user-list-body');
-            tbody.innerHTML = '';
-            localUsers.forEach(user => {
-                const tr = document.createElement('tr');
-                tr.className = 'bg-white border-b hover:bg-gray-50 transition';
-                const isAdmin = user.role === 'admin';
-                const perms = user.permissions || [];
-                
-                // 生成权限徽章
-                let permBadges = '';
-                if (perms.includes('student_data')) permBadges += `<span class="text-[10px] bg-blue-100 text-blue-800 px-1 py-0.5 rounded mr-1" title="学生资料"><i class="fas fa-user-graduate"></i></span>`;
-                if (perms.includes('account_manage')) permBadges += `<span class="text-[10px] bg-purple-100 text-purple-800 px-1 py-0.5 rounded mr-1" title="账号管理"><i class="fas fa-users-cog"></i></span>`;
-                if (perms.includes('perm_manage')) permBadges += `<span class="text-[10px] bg-red-100 text-red-800 px-1 py-0.5 rounded mr-1" title="权限管理"><i class="fas fa-shield-alt"></i></span>`;
-                if (permBadges === '') permBadges = '<span class="text-gray-300 text-xs">无权限</span>';
-
-                tr.innerHTML = `
-                    <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
-                        ${user.id} 
-                        <span class="text-xs text-gray-400 ml-1">(${isAdmin ? '管理员' : '教师'})</span>
-                    </td>
-                    <td class="px-6 py-4">
-                        ${permBadges}
-                    </td>
-                    <td class="px-6 py-4 font-mono text-gray-400 text-xs">${isAdmin ? '******' : user.pwd}</td>
-                    <td class="px-6 py-4 text-right flex justify-end gap-2">
-                        ${user.id === 'admin' ? '<span class="text-xs text-gray-300">不可操作</span>' : `
-                            <button onclick="openPermModal('${user.id}')" class="text-blue-500 hover:text-blue-700 bg-blue-50 px-2 py-1 rounded text-xs border border-blue-200">
-                                <i class="fas fa-cog mr-1"></i>权限
-                            </button>
-                            <button onclick="deleteUser('${user.id}')" class="text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded text-xs border border-red-200">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        `}
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
         function renderLogList() {
             const logContainer = document.getElementById('log-container');
+            if (!logContainer) return;
             logContainer.innerHTML = '';
             if (localLogs.length === 0) {
                 logContainer.innerHTML = '<div class="text-center text-gray-400 mt-10">暂无日志记录</div>';
@@ -658,20 +658,120 @@
                 localLogs.forEach(log => {
                     const item = document.createElement('div');
                     item.className = 'mb-3 pb-3 border-b border-gray-100 last:border-0 animate-fade-in';
+                    
                     let iconColor = 'text-gray-400';
+                    let bgColor = ''; // 默认无背景
+                    let textColor = 'text-gray-500';
+
+                    // 日志样式分类
                     if (log.action.includes('登录')) iconColor = 'text-green-500';
-                    if (log.action.includes('登出')) iconColor = 'text-orange-500';
-                    if (log.action.includes('创建') || log.action.includes('删除') || log.action.includes('权限')) iconColor = 'text-blue-500';
+                    else if (log.action.includes('登出')) iconColor = 'text-orange-500';
+                    else if (log.action.includes('报错') || log.action.includes('❌')) {
+                        iconColor = 'text-red-600';
+                        bgColor = 'bg-red-50 p-2 rounded border border-red-100'; // 报错红色高亮
+                        textColor = 'text-red-700 font-medium';
+                    }
+                    else iconColor = 'text-blue-500';
+
                     item.innerHTML = `
-                        <div class="flex justify-between items-start"><div class="text-sm text-gray-800 font-medium"><i class="fas fa-circle text-[8px] ${iconColor} mr-2 align-middle"></i>${log.user}</div><div class="text-xs text-gray-400">${log.displayTime}</div></div>
-                        <div class="text-xs text-gray-500 ml-5 mt-1">${log.action}</div>
+                        <div class="${bgColor}">
+                            <div class="flex justify-between items-start">
+                                <div class="text-sm text-gray-800 font-medium">
+                                    <i class="fas fa-circle text-[8px] ${iconColor} mr-2 align-middle"></i>
+                                    ${log.user}
+                                </div>
+                                <div class="text-xs text-gray-400">${log.displayTime}</div>
+                            </div>
+                            <div class="text-xs ${textColor} ml-5 mt-1 break-words">
+                                ${log.action}
+                            </div>
+                        </div>
                     `;
                     logContainer.appendChild(item);
                 });
             }
         }
 
-        // 绑定 Form 提交事件 (因为 HTML onsubmit 在 module 下访问不到 window.func 除非显式定义)
+        // ... 其他辅助函数 (renderUserList, updateNavbar 等保持不变) ...
+        function updateNavbar() {
+            if (currentUser) document.getElementById('nav-user-id').innerText = currentUser.id;
+        }
+
+        function renderUserList() {
+            const tbody = document.getElementById('user-list-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            localUsers.forEach(user => {
+                const tr = document.createElement('tr');
+                tr.className = 'bg-white border-b hover:bg-gray-50 transition';
+                const isAdmin = user.role === 'admin';
+                const perms = user.permissions || [];
+                let permBadges = '';
+                if (perms.includes('student_data')) permBadges += `<span class="text-[10px] bg-blue-100 text-blue-800 px-1 py-0.5 rounded mr-1" title="学生资料"><i class="fas fa-user-graduate"></i></span>`;
+                if (perms.includes('account_manage')) permBadges += `<span class="text-[10px] bg-purple-100 text-purple-800 px-1 py-0.5 rounded mr-1" title="账号管理"><i class="fas fa-users-cog"></i></span>`;
+                if (perms.includes('perm_manage')) permBadges += `<span class="text-[10px] bg-red-100 text-red-800 px-1 py-0.5 rounded mr-1" title="权限管理"><i class="fas fa-shield-alt"></i></span>`;
+                if (permBadges === '') permBadges = '<span class="text-gray-300 text-xs">无权限</span>';
+
+                tr.innerHTML = `
+                    <td class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">${user.id} <span class="text-xs text-gray-400 ml-1">(${isAdmin ? '管理员' : '教师'})</span></td>
+                    <td class="px-6 py-4">${permBadges}</td>
+                    <td class="px-6 py-4 font-mono text-gray-400 text-xs">${isAdmin ? '******' : user.pwd}</td>
+                    <td class="px-6 py-4 text-right flex justify-end gap-2">${user.id === 'admin' ? '<span class="text-xs text-gray-300">不可操作</span>' : `<button onclick="openPermModal('${user.id}')" class="text-blue-500 hover:text-blue-700 bg-blue-50 px-2 py-1 rounded text-xs border border-blue-200"><i class="fas fa-cog mr-1"></i>权限</button><button onclick="deleteUser('${user.id}')" class="text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded text-xs border border-red-200"><i class="fas fa-trash"></i></button>`}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function addLog(userId, action) {
+            try {
+                await addDoc(LOGS_COLLECTION, {
+                    user: userId,
+                    action: action,
+                    timestamp: new Date().toISOString(),
+                    displayTime: new Date().toLocaleString()
+                });
+            } catch (err) { console.error("Logging failed", err); }
+        }
+
+        // 暴露函数给 window
+        window.showMyPermissions = () => {
+            if (!currentUser) return;
+            document.getElementById('modal-my-id').innerText = currentUser.id;
+            const listContainer = document.getElementById('modal-my-perm-list');
+            listContainer.innerHTML = '';
+            const perms = currentUser.permissions || [];
+            if (perms.length === 0) {
+                listContainer.innerHTML = '<div class="text-gray-400 text-center py-4">暂无特殊权限</div>';
+            } else {
+                perms.forEach(permKey => {
+                    const info = PERM_DICT[permKey];
+                    if (info) {
+                        const div = document.createElement('div');
+                        div.className = 'flex items-center p-3 bg-gray-50 rounded-lg border border-gray-100';
+                        div.innerHTML = `<i class="fas ${info.icon} ${info.color} w-8 text-center text-lg"></i><span class="font-medium text-gray-700">${info.label}</span><i class="fas fa-check text-green-500 ml-auto"></i>`;
+                        listContainer.appendChild(div);
+                    }
+                });
+            }
+            document.getElementById('modal-my-perms').classList.remove('hidden');
+        };
+        window.closeModal = (modalId) => document.getElementById(modalId).classList.add('hidden');
+        window.navigateTo = (page) => {
+            if (page === 'dashboard') {
+                if (currentUser && currentUser.role === 'admin') renderView('admin');
+                else renderView('teacher');
+            } else renderView(page);
+        };
+        window.clearLogs = async () => {
+             if(!confirm('确定要清空所有历史日志吗？')) return;
+            try {
+                const snapshot = await getDocs(LOGS_COLLECTION);
+                const batch = writeBatch(db);
+                snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+                await batch.commit();
+            } catch (err) { logError("Clear logs failed:", err); alert("清空失败"); }
+        }
+
         document.getElementById('form-login').onsubmit = window.handleLogin;
         document.getElementById('form-add-user').onsubmit = window.handleAddUser;
         document.getElementById('btn-logout').onclick = window.logout;
